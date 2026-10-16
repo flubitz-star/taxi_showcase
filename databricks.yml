@@ -1,0 +1,24 @@
+bundle:
+  name: taxi_showcase
+
+include:
+  - resources/*.yml
+
+artifacts:
+  taxi_showcase:
+    type: whl
+    path: .
+
+variables:
+  catalog:
+    description: "Unity Catalog for all tables"
+    default: workspace
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      profile: DEFAULT
+    variables:
+      catalog: workspace

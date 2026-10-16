@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=64.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "taxi_showcase"
+version = "0.1.0"
+description = "NYC Taxi, Weather & CitiBike Medallion Pipeline (DABs)"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]
