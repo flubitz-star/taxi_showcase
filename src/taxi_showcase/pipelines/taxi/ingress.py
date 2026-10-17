@@ -8,7 +8,7 @@ import os
 
 from pyspark.sql import SparkSession
 
-from taxi_showcase.config import PROJECT_CONFIG
+from taxi_showcase.pipelines.taxi.config import CONFIG
 from taxi_showcase.tracking import get_pending_ingest_files
 from taxi_showcase.schema import validate_schema, load_with_schema_evolution
 from taxi_showcase.ingest_helpers import verify_bronze
@@ -17,7 +17,7 @@ spark = SparkSession.builder.getOrCreate()
 
 
 def main():
-    cfg = PROJECT_CONFIG["taxi"]
+    cfg = CONFIG
     tracking_table = cfg["tracking_table"]
     bronze_table = cfg["bronze_table"]
 

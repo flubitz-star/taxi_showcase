@@ -6,7 +6,7 @@ Type casting, dedup, null checks, range validation, completeness check.
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, current_timestamp, date_format, count as spark_count
 
-from taxi_showcase.config import PROJECT_CONFIG
+from taxi_showcase.pipelines.weather.config import CONFIG
 from taxi_showcase.timestamp_utils import validate_timestamp_column, print_timestamp_report, normalize_timestamp
 from taxi_showcase.silver_helpers import dedup_keep_first, report_null_counts, write_silver
 
@@ -14,7 +14,7 @@ spark = SparkSession.builder.getOrCreate()
 
 
 def main():
-    cfg = PROJECT_CONFIG["weather"]
+    cfg = CONFIG
     bronze_table = cfg["bronze_table"]
     silver_table = cfg["silver_table"]
 
@@ -74,7 +74,8 @@ def main():
         else:
             out_of_range = df_silver.filter(col(c) < lo).count()
         status = "\u2705" if out_of_range == 0 else "\u26a0\ufe0f"
-        print(f"  {status} {label}: {out_of_range} Werte ausserhalb [{lo}, {hi or '\u221e'}]")
+        hi_display = hi if hi is not None else "\u221e"
+        print(f"  {status} {label}: {out_of_range} Werte ausserhalb [{lo}, {hi_display}]")
 
     # Check 5: Completeness (24 hours per day)
     print("\n\u2500\u2500 Vollstaendigkeit (Stunden pro Tag) \u2500\u2500")

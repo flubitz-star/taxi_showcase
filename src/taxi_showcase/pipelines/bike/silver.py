@@ -7,7 +7,7 @@ dedup on ride_id, null checks, DLQ, write silver.
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, lit
 
-from taxi_showcase.config import PROJECT_CONFIG
+from taxi_showcase.pipelines.bike.config import CONFIG
 from taxi_showcase.silver_helpers import (
     validate_timestamp_columns, filter_temporal_outliers,
     add_trip_features, dedup_keep_first, report_null_counts,
@@ -18,7 +18,7 @@ spark = SparkSession.builder.getOrCreate()
 
 
 def main():
-    cfg = PROJECT_CONFIG["bike"]
+    cfg = CONFIG
     bronze_table = cfg["bronze_table"]
     silver_table = cfg["silver_table"]
     dlq_table = cfg["dlq_table"]

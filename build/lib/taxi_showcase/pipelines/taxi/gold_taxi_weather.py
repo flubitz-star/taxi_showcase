@@ -10,7 +10,9 @@ from pyspark.sql.functions import (
     round as round_, when, countDistinct, date_trunc,
 )
 
-from taxi_showcase.config import CATALOG, PROJECT_CONFIG, GOLD_TABLES
+from taxi_showcase.pipelines.shared.config import CATALOG, GOLD_TABLES
+from taxi_showcase.pipelines.taxi.config import CONFIG as TAXI_CONFIG
+from taxi_showcase.pipelines.weather.config import CONFIG as WEATHER_CONFIG
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -18,8 +20,8 @@ spark = SparkSession.builder.getOrCreate()
 def main():
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.gold")
 
-    taxi_silver = PROJECT_CONFIG["taxi"]["silver_table"]
-    weather_silver = PROJECT_CONFIG["weather"]["silver_table"]
+    taxi_silver = TAXI_CONFIG["silver_table"]
+    weather_silver = WEATHER_CONFIG["silver_table"]
     enriched_table = GOLD_TABLES["taxi_weather_enriched"]
     daily_table = GOLD_TABLES["daily_metrics"]
     hourly_table = GOLD_TABLES["hourly_ridership"]

@@ -8,7 +8,7 @@ from pyspark.sql.types import (
     TimestampType, DateType, BooleanType,
 )
 
-from taxi_showcase.config import META_COLUMNS
+from taxi_showcase.pipelines.shared.config import META_COLUMNS
 
 spark = SparkSession.builder.getOrCreate()
 

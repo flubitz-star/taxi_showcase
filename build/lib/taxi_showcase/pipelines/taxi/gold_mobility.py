@@ -6,7 +6,10 @@ to compare usage of both transport modes depending on weather.
 
 from pyspark.sql import SparkSession
 
-from taxi_showcase.config import CATALOG, PROJECT_CONFIG, GOLD_TABLES
+from taxi_showcase.pipelines.shared.config import CATALOG, GOLD_TABLES
+from taxi_showcase.pipelines.bike.config import CONFIG as BIKE_CONFIG
+from taxi_showcase.pipelines.taxi.config import CONFIG as TAXI_CONFIG
+from taxi_showcase.pipelines.weather.config import CONFIG as WEATHER_CONFIG
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -16,9 +19,9 @@ def main():
     hourly_table = GOLD_TABLES["mobility_hourly_comparison"]
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.gold")
 
-    taxi_silver = PROJECT_CONFIG["taxi"]["silver_table"]
-    bike_silver = PROJECT_CONFIG["bike"]["silver_table"]
-    weather_silver = PROJECT_CONFIG["weather"]["silver_table"]
+    taxi_silver = TAXI_CONFIG["silver_table"]
+    bike_silver = BIKE_CONFIG["silver_table"]
+    weather_silver = WEATHER_CONFIG["silver_table"]
 
     df_taxi = spark.table(taxi_silver)
     df_bike = spark.table(bike_silver)
@@ -150,6 +153,9 @@ def main():
         SELECT
             TO_DATE(started_at) AS pickup_date,
             HOUR(started_at) AS pickup_hour,
+            MAX(pickup_dayofweek) AS pickup_dayofweek,
+            MAX(pickup_weekday) AS pickup_weekday,
+            MAX(is_weekend) AS is_weekend,
             COUNT(*) AS bike_trips,
             ROUND(AVG(trip_duration_min), 1) AS bike_avg_duration_min,
             SUM(CASE WHEN member_casual = 'member' THEN 1 ELSE 0 END) AS bike_member_trips,

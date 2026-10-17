@@ -1,7 +1,7 @@
 """CitiBike Ingress \u2013 Step 01: Landing Zone \u2192 Bronze.
 
 Landing zone check, ZIP extraction, CSV read with schema, load to bronze.
-Lese-Schema and CSV-Optionen come from PROJECT_CONFIG (single source of truth).
+Lese-Schema und CSV-Optionen kommen aus der Bike-Pipeline-Konfiguration.
 """
 
 import zipfile
@@ -10,7 +10,7 @@ import shutil
 
 from pyspark.sql import SparkSession
 
-from taxi_showcase.config import PROJECT_CONFIG
+from taxi_showcase.pipelines.bike.config import CONFIG
 from taxi_showcase.schema import expected_to_struct_type, validate_schema, load_with_schema_evolution
 from taxi_showcase.tracking import get_pending_ingest_files
 from taxi_showcase.ingest_helpers import run_landing_zone_check, verify_bronze
@@ -19,7 +19,7 @@ spark = SparkSession.builder.getOrCreate()
 
 
 def main():
-    cfg = PROJECT_CONFIG["bike"]
+    cfg = CONFIG
     bronze_table = cfg["bronze_table"]
     lz_path = cfg["landing_zone"]
 

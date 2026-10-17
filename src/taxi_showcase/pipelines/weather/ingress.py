@@ -9,7 +9,7 @@ import os
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, lit
 
-from taxi_showcase.config import PROJECT_CONFIG
+from taxi_showcase.pipelines.weather.config import CONFIG
 from taxi_showcase.tracking import get_pending_ingest_files
 from taxi_showcase.schema import validate_schema, load_with_schema_evolution
 from taxi_showcase.ingest_helpers import verify_bronze
@@ -42,7 +42,7 @@ def read_open_meteo_csv(file_path):
 
 
 def main():
-    cfg = PROJECT_CONFIG["weather"]
+    cfg = CONFIG
     tracking_table = cfg["tracking_table"]
     bronze_table = cfg["bronze_table"]
 
