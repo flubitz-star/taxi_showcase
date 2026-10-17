@@ -3,79 +3,63 @@ resources:
     ingest_silver:
       name: "Ingest & Silver Pipeline (Weather + Taxi + Bike)"
 
-      job_clusters:
-        - job_cluster_key: default
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - "${workspace.artifact_path}/.internal/taxi_showcase-0.1.0-py3-none-any.whl"
 
       tasks:
         # ── Weather chain ──
         - task_key: weather_landing_zone
-          job_cluster_key: default
+          environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/weather/landing_zone.py
-          libraries:
-            - whl: ../dist/taxi_showcase-0.1.0-py3-none-any.whl
 
         - task_key: weather_ingress
           depends_on:
             - task_key: weather_landing_zone
-          job_cluster_key: default
+          environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/weather/ingress.py
-          libraries:
-            - whl: ../dist/taxi_showcase-0.1.0-py3-none-any.whl
 
         - task_key: weather_silver
           depends_on:
             - task_key: weather_ingress
-          job_cluster_key: default
+          environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/weather/silver.py
-          libraries:
-            - whl: ../dist/taxi_showcase-0.1.0-py3-none-any.whl
 
         # ── Taxi chain ──
         - task_key: taxi_landing_zone
-          job_cluster_key: default
+          environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/taxi/landing_zone.py
-          libraries:
-            - whl: ../dist/taxi_showcase-0.1.0-py3-none-any.whl
 
         - task_key: taxi_ingress
           depends_on:
             - task_key: taxi_landing_zone
-          job_cluster_key: default
+          environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/taxi/ingress.py
-          libraries:
-            - whl: ../dist/taxi_showcase-0.1.0-py3-none-any.whl
 
         - task_key: taxi_silver
           depends_on:
             - task_key: taxi_ingress
-          job_cluster_key: default
+          environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/taxi/silver.py
-          libraries:
-            - whl: ../dist/taxi_showcase-0.1.0-py3-none-any.whl
 
         # ── Bike chain ──
         - task_key: bike_ingress
-          job_cluster_key: default
+          environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/bike/ingress.py
-          libraries:
-            - whl: ../dist/taxi_showcase-0.1.0-py3-none-any.whl
 
         - task_key: bike_silver
           depends_on:
             - task_key: bike_ingress
-          job_cluster_key: default
+          environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/bike/silver.py
-          libraries:
-            - whl: ../dist/taxi_showcase-0.1.0-py3-none-any.whl

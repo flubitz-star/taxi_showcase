@@ -8,6 +8,7 @@ artifacts:
   taxi_showcase:
     type: whl
     path: .
+    build: python -m pip wheel . --no-deps --wheel-dir dist
 
 variables:
   catalog:

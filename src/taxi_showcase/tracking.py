@@ -7,7 +7,7 @@ from datetime import datetime
 from pyspark.sql import SparkSession
 from databricks.sdk.runtime import dbutils
 
-from taxi_showcase.config import TRACKING_SCHEMA
+from taxi_showcase.pipelines.shared.tracking_schema import TRACKING_SCHEMA
 
 spark = SparkSession.builder.getOrCreate()
 

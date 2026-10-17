@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: taxi_showcase
+Version: 0.1.0
+Summary: NYC Taxi, Weather & CitiBike Medallion Pipeline (DABs)
+Requires-Python: >=3.10
