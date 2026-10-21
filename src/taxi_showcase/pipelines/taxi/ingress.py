@@ -8,10 +8,10 @@ import os
 
 from pyspark.sql import SparkSession
 
-from taxi_showcase.pipelines.taxi.config import CONFIG
-from taxi_showcase.tracking import get_pending_ingest_files
-from taxi_showcase.schema import validate_schema, load_with_schema_evolution
 from taxi_showcase.ingest_helpers import verify_bronze
+from taxi_showcase.pipelines.taxi.config import CONFIG
+from taxi_showcase.schema import load_with_schema_evolution, validate_schema
+from taxi_showcase.tracking import get_pending_ingest_files
 
 spark = SparkSession.builder.getOrCreate()
 

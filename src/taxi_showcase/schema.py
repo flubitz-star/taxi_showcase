@@ -1,11 +1,17 @@
 """Schema validation and evolution functions."""
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import lit, current_timestamp
+from pyspark.sql.functions import current_timestamp, lit
 from pyspark.sql.types import (
-    StructType, StructField, StringType, LongType,
-    IntegerType, DoubleType, FloatType,
-    TimestampType, DateType, BooleanType,
+    BooleanType,
+    DateType,
+    DoubleType,
+    IntegerType,
+    LongType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
 )
 
 from taxi_showcase.pipelines.shared.config import META_COLUMNS

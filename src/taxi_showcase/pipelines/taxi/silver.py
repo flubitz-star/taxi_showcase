@@ -5,13 +5,17 @@ passenger_count imputation, range checks, DLQ, write silver.
 """
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, lit, when, isnull
+from pyspark.sql.functions import col, isnull, lit, when
 
 from taxi_showcase.pipelines.taxi.config import CONFIG
 from taxi_showcase.silver_helpers import (
-    validate_timestamp_columns, filter_temporal_outliers,
-    add_trip_features, dedup_keep_first, report_null_counts,
-    write_dlq, write_silver,
+    add_trip_features,
+    dedup_keep_first,
+    filter_temporal_outliers,
+    report_null_counts,
+    validate_timestamp_columns,
+    write_dlq,
+    write_silver,
 )
 
 spark = SparkSession.builder.getOrCreate()
@@ -66,7 +70,7 @@ def main():
     df_silver = add_trip_features(df_consistent, "tpep_pickup_datetime", "tpep_dropoff_datetime")
     # Flag negative fares (not removed)
     df_silver = df_silver.withColumn("_has_negative_fare", col("fare_amount") < 0)
-    print(f"  Abgeleitete Spalten: trip_duration_min, _has_negative_fare, pickup_dayofweek, pickup_weekday, is_weekend")
+    print("  Abgeleitete Spalten: trip_duration_min, _has_negative_fare, pickup_dayofweek, pickup_weekday, is_weekend")
     print(f"  Zeilen nach Konsistenz-Filter: {df_silver.count():,}")
 
     # Check 4: Dedup
@@ -79,7 +83,7 @@ def main():
 
     # Check 5: Null handling (passenger_count imputation)
     null_passengers = df_silver.filter(isnull(col("passenger_count"))).count()
-    print(f"\n\u2500\u2500 Null-Behandlung \u2500\u2500")
+    print("\n\u2500\u2500 Null-Behandlung \u2500\u2500")
     print(f"  passenger_count NULLs vor Imputation: {null_passengers:,}")
     if null_passengers > 0:
         df_silver = df_silver.withColumn(
@@ -90,7 +94,7 @@ def main():
     else:
         df_silver = df_silver.withColumn("_passenger_count_imputed", lit(False))
 
-    print(f"  -> NULLs mit 1 gefuellt, _passenger_count_imputed Flag gesetzt.")
+    print("  -> NULLs mit 1 gefuellt, _passenger_count_imputed Flag gesetzt.")
 
     report_null_counts(df_silver, [
         "VendorID", "tpep_pickup_datetime", "tpep_dropoff_datetime",

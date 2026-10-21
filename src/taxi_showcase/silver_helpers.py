@@ -4,14 +4,23 @@ from datetime import timedelta
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, lit, isnull, current_timestamp,
-    unix_timestamp, dayofweek, date_format,
-    percentile_approx, row_number, asc, desc,
+    asc,
+    col,
+    current_timestamp,
+    date_format,
+    dayofweek,
+    desc,
+    isnull,
+    lit,
+    percentile_approx,
+    row_number,
+    unix_timestamp,
 )
 from pyspark.sql.window import Window
 
 from taxi_showcase.timestamp_utils import (
-    validate_timestamp_column, print_timestamp_report,
+    print_timestamp_report,
+    validate_timestamp_column,
 )
 
 spark = SparkSession.builder.getOrCreate()

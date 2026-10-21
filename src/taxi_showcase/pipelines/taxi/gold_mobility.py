@@ -6,8 +6,8 @@ to compare usage of both transport modes depending on weather.
 
 from pyspark.sql import SparkSession
 
-from taxi_showcase.pipelines.shared.config import CATALOG, GOLD_TABLES
 from taxi_showcase.pipelines.bike.config import CONFIG as BIKE_CONFIG
+from taxi_showcase.pipelines.shared.config import CATALOG, GOLD_TABLES
 from taxi_showcase.pipelines.taxi.config import CONFIG as TAXI_CONFIG
 from taxi_showcase.pipelines.weather.config import CONFIG as WEATHER_CONFIG
 

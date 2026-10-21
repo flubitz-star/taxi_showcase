@@ -3,8 +3,8 @@
 Lists files in the taxi landing zone, registers new files via checksum tracking.
 """
 
-from taxi_showcase.pipelines.taxi.config import CONFIG
 from taxi_showcase.ingest_helpers import run_landing_zone_check
+from taxi_showcase.pipelines.taxi.config import CONFIG
 
 
 def main():

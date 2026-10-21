@@ -6,8 +6,21 @@ INNER JOIN Trips x Weather per pickup-hour. Coverage guard: skip write if 0 matc
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, hour, count, avg, sum as sum_, count as count_,
-    round as round_, when, countDistinct, date_trunc,
+    avg,
+    col,
+    countDistinct,
+    date_trunc,
+    hour,
+    when,
+)
+from pyspark.sql.functions import (
+    count as count_,
+)
+from pyspark.sql.functions import (
+    round as round_,
+)
+from pyspark.sql.functions import (
+    sum as sum_,
 )
 
 from taxi_showcase.pipelines.shared.config import CATALOG, GOLD_TABLES

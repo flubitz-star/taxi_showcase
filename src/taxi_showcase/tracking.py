@@ -4,8 +4,8 @@ import hashlib
 import os
 from datetime import datetime
 
-from pyspark.sql import SparkSession
 from databricks.sdk.runtime import dbutils
+from pyspark.sql import SparkSession
 
 from taxi_showcase.pipelines.shared.tracking_schema import TRACKING_SCHEMA
 

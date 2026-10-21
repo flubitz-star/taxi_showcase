@@ -88,6 +88,16 @@ databricks bundle run ingest_silver --only weather_ingress --target dev
 databricks bundle run ingest_silver --only weather_silver --target dev
 ```
 
+## Code quality
+
+GitHub Actions runs Ruff on every push and pull request. To run the same check
+locally:
+
+```bash
+python -m pip install ruff
+ruff check src
+```
+
 ## Unity Catalog
 
 All tables in catalog `workspace`:

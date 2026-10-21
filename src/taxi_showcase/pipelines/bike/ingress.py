@@ -4,16 +4,20 @@ Landing zone check, ZIP extraction, CSV read with schema, load to bronze.
 Lese-Schema und CSV-Optionen kommen aus der Bike-Pipeline-Konfiguration.
 """
 
-import zipfile
 import os
 import shutil
+import zipfile
 
 from pyspark.sql import SparkSession
 
-from taxi_showcase.pipelines.bike.config import CONFIG
-from taxi_showcase.schema import expected_to_struct_type, validate_schema, load_with_schema_evolution
-from taxi_showcase.tracking import get_pending_ingest_files
 from taxi_showcase.ingest_helpers import run_landing_zone_check, verify_bronze
+from taxi_showcase.pipelines.bike.config import CONFIG
+from taxi_showcase.schema import (
+    expected_to_struct_type,
+    load_with_schema_evolution,
+    validate_schema,
+)
+from taxi_showcase.tracking import get_pending_ingest_files
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -26,7 +30,7 @@ def main():
     print(f"Bronze:       {bronze_table}")
 
     # Landing zone check & register new files
-    new_files, dup_files = run_landing_zone_check(cfg)
+    run_landing_zone_check(cfg)
 
     # Files registered but not yet in bronze
     pending = get_pending_ingest_files(cfg["tracking_table"], bronze_table)

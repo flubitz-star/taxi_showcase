@@ -4,11 +4,20 @@ Type casting, dedup, null checks, range validation, completeness check.
 """
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, current_timestamp, date_format, count as spark_count
+from pyspark.sql.functions import col, current_timestamp, date_format
+from pyspark.sql.functions import count as spark_count
 
 from taxi_showcase.pipelines.weather.config import CONFIG
-from taxi_showcase.timestamp_utils import validate_timestamp_column, print_timestamp_report, normalize_timestamp
-from taxi_showcase.silver_helpers import dedup_keep_first, report_null_counts, write_silver
+from taxi_showcase.silver_helpers import (
+    dedup_keep_first,
+    report_null_counts,
+    write_silver,
+)
+from taxi_showcase.timestamp_utils import (
+    normalize_timestamp,
+    print_timestamp_report,
+    validate_timestamp_column,
+)
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -99,7 +108,7 @@ def main():
     write_silver(df_silver, silver_table)
 
     # Verify
-    print(f"\nStichprobe (5 Zeilen):")
+    print("\nStichprobe (5 Zeilen):")
     spark.sql(f"""
         SELECT ts, temperature_2m_c, rain_mm, snowfall_cm,
                precipitation_mm, snow_depth_m

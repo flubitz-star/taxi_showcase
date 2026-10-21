@@ -9,9 +9,13 @@ from pyspark.sql.functions import col, lit
 
 from taxi_showcase.pipelines.bike.config import CONFIG
 from taxi_showcase.silver_helpers import (
-    validate_timestamp_columns, filter_temporal_outliers,
-    add_trip_features, dedup_keep_first, report_null_counts,
-    write_dlq, write_silver,
+    add_trip_features,
+    dedup_keep_first,
+    filter_temporal_outliers,
+    report_null_counts,
+    validate_timestamp_columns,
+    write_dlq,
+    write_silver,
 )
 
 spark = SparkSession.builder.getOrCreate()
@@ -56,7 +60,7 @@ def main():
 
     # Add derived columns
     df_silver = add_trip_features(df_consistent, "started_at", "ended_at")
-    print(f"  Abgeleitete Spalten: trip_duration_min, pickup_dayofweek, pickup_weekday, is_weekend")
+    print("  Abgeleitete Spalten: trip_duration_min, pickup_dayofweek, pickup_weekday, is_weekend")
     print(f"  Zeilen nach Konsistenz-Filter: {df_silver.count():,}")
 
     # Check 4: Dedup on ride_id
