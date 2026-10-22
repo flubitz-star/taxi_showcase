@@ -1,16 +1,26 @@
-"""Expected source columns for Open-Meteo weather data."""
+"""Schema contracts for weather Bronze and Silver tables."""
 
-EXPECTED_COLUMNS = {
-    "latitude":              "string",
-    "longitude":             "string",
-    "elevation":              "string",
-    "utc_offset_seconds":    "string",
-    "timezone":              "string",
+from taxi_showcase.pipelines.weather.schema import EXPECTED_COLUMNS
+
+BRONZE_SCHEMA = {
+    **EXPECTED_COLUMNS,
+    "_source_file": "string",
+    "_ingested_at": "timestamp",
+}
+
+SILVER_SCHEMA = {
+    "latitude": "double",
+    "longitude": "double",
+    "utc_offset_seconds": "int",
+    "timezone": "string",
     "timezone_abbreviation": "string",
-    "time":                  "string",
-    "temperature_2m (\u00b0C)": "string",
-    "rain (mm)":             "string",
-    "snowfall (cm)":         "string",
-    "precipitation (mm)":    "string",
-    "snow_depth (m)":        "string",
+    "_source_file": "string",
+    "_ingested_at": "timestamp",
+    "ts": "timestamp",
+    "temperature_2m_c": "double",
+    "rain_mm": "double",
+    "snowfall_cm": "double",
+    "precipitation_mm": "double",
+    "snow_depth_m": "double",
+    "_silver_processed_at": "timestamp",
 }

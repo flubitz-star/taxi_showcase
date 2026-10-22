@@ -5,6 +5,7 @@ from pyspark.sql.functions import (
     col,
     isnull,
     to_timestamp,
+    to_timestamp_ntz,
 )
 from pyspark.sql.functions import (
     max as _spark_max,
@@ -78,13 +79,13 @@ def print_timestamp_report(result, col_name):
 
 
 def normalize_timestamp(df, col_name, output_col=None, expected_format=None):
-    """Parst eine Spalte zu timestamp und ersetzt/legt sie im DataFrame ab."""
+    """Parst eine lokale Zeitspalte zu timestamp_ntz."""
     if output_col is None:
         output_col = col_name
 
     if expected_format:
-        parsed = to_timestamp(col(col_name), expected_format)
+        parsed = to_timestamp_ntz(col(col_name), expected_format)
     else:
-        parsed = to_timestamp(col(col_name))
+        parsed = to_timestamp_ntz(col(col_name))
 
     return df.withColumn(output_col, parsed)

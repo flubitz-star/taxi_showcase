@@ -1,7 +1,7 @@
 """Taxi Ingress \u2013 Step 02: Landing Zone \u2192 Bronze.
 
 Reads Parquet files (NYC TLC Yellow Trip Records) into bronze.
-Schema validation against TLC Data Dictionary, schema evolution for new columns.
+Strict schema validation against the declared source contract.
 """
 
 import os
@@ -10,7 +10,12 @@ from pyspark.sql import SparkSession
 
 from taxi_showcase.ingest_helpers import verify_bronze
 from taxi_showcase.pipelines.taxi.config import CONFIG
-from taxi_showcase.schema import load_with_schema_evolution, validate_schema
+from taxi_showcase.schema import (
+    load_to_bronze,
+    validate_dataframe_schema,
+    validate_table_schema,
+)
+from taxi_showcase.schemas.taxi import BRONZE_SCHEMA
 from taxi_showcase.tracking import get_pending_ingest_files
 
 spark = SparkSession.builder.getOrCreate()
@@ -29,39 +34,38 @@ def main():
     for f in new_files:
         print(f"  {f.file_name}")
 
-    # Schema validation against Data Dictionary
-    expected_columns = cfg["expected_columns"]
-
     if not new_files:
         print("Keine neuen Dateien \u2013 Schema-Check gegen bestehende Bronze-Tabelle.")
-        bronze_schema = spark.sql(f"DESCRIBE TABLE {bronze_table}").collect()
-        actual_cols = {row.col_name: row.data_type for row in bronze_schema}
+        validate_table_schema(bronze_table, BRONZE_SCHEMA)
     else:
-        sample_file = new_files[0]
-        if os.path.exists(sample_file.file_path):
-            print(f"Schema-Check gegen: {sample_file.file_name}")
-            raw_schema = spark.read.parquet(sample_file.file_path).schema
-            actual_cols = {f.name: f.dataType.simpleString() for f in raw_schema.fields}
-        else:
-            print(f"\u26a0\ufe0f  Datei nicht gefunden: {sample_file.file_name}")
-            bronze_schema = spark.sql(f"DESCRIBE TABLE {bronze_table}").collect()
-            actual_cols = {row.col_name: row.data_type for row in bronze_schema}
-
-    validate_schema(actual_cols, expected_columns)
+        pending_dataframes = []
+        for file_info in new_files:
+            if not os.path.exists(file_info.file_path):
+                print(f"\u26a0\ufe0f  Datei nicht gefunden: {file_info.file_name}")
+                continue
+            print(f"Schema-Check gegen: {file_info.file_name}")
+            raw_df = spark.read.parquet(file_info.file_path)
+            validate_dataframe_schema(
+                raw_df,
+                cfg["expected_columns"],
+                context=f"Quelldatei '{file_info.file_name}'",
+            )
+            pending_dataframes.append((file_info, raw_df))
 
     # Load into Bronze
     if new_files:
         total_rows = 0
         loaded_count = 0
-        for f in new_files:
-            if not os.path.exists(f.file_path):
-                print(f"\u26a0\ufe0f  Datei nicht gefunden, \u00fcberspringe: {f.file_name}")
-                continue
-
+        for f, df in pending_dataframes:
             print(f"Lade {f.file_name} ...")
-            df = spark.read.parquet(f.file_path)
             row_count = df.count()
-            load_with_schema_evolution(df, f.file_name, bronze_table)
+            load_to_bronze(
+                df,
+                f.file_name,
+                bronze_table,
+                cfg["expected_columns"],
+                BRONZE_SCHEMA,
+            )
             total_rows += row_count
             loaded_count += 1
             print(f"  -> {row_count:,} Zeilen geladen")

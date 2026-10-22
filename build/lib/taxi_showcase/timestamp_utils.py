@@ -2,8 +2,15 @@
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, to_timestamp, isnull,
-    min as _spark_min, max as _spark_max,
+    col,
+    isnull,
+    to_timestamp,
+)
+from pyspark.sql.functions import (
+    max as _spark_max,
+)
+from pyspark.sql.functions import (
+    min as _spark_min,
 )
 
 spark = SparkSession.builder.getOrCreate()

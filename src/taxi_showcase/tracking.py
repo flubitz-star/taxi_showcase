@@ -7,7 +7,11 @@ from datetime import datetime
 from databricks.sdk.runtime import dbutils
 from pyspark.sql import SparkSession
 
-from taxi_showcase.pipelines.shared.tracking_schema import TRACKING_SCHEMA
+from taxi_showcase.pipelines.shared.tracking_schema import (
+    TRACKING_COLUMNS,
+    TRACKING_SCHEMA,
+)
+from taxi_showcase.schema import validate_table_schema, write_table
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -61,6 +65,7 @@ def ensure_tracking_table(tracking_table):
         print(f"Tracking-Tabelle {tracking_table} existiert nicht \u2013 wird erstellt.")
         spark.sql(_tracking_ddl_from_schema(tracking_table))
         print(f"Tracking-Tabelle {tracking_table} erstellt.")
+    validate_table_schema(tracking_table, TRACKING_COLUMNS)
 
 
 def get_known_checksums(tracking_table):
@@ -108,10 +113,8 @@ def register_new_files(new_files, tracking_table):
         (f["file_name"], f["file_path"], f["checksum"], f["file_size"], now)
         for f in new_files
     ]
-    spark.createDataFrame(rows, TRACKING_SCHEMA).write \
-        .format("delta") \
-        .mode("append") \
-        .saveAsTable(tracking_table)
+    tracking_df = spark.createDataFrame(rows, TRACKING_SCHEMA)
+    write_table(tracking_df, tracking_table, TRACKING_COLUMNS, mode="append")
 
     print(f"{len(new_files)} neue Datei(en) in {tracking_table} registriert.")
     return len(new_files)

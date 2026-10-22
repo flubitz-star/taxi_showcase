@@ -8,6 +8,8 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, isnull, lit, when
 
 from taxi_showcase.pipelines.taxi.config import CONFIG
+from taxi_showcase.schema import validate_table_schema
+from taxi_showcase.schemas.taxi import BRONZE_SCHEMA, DLQ_SCHEMA, SILVER_SCHEMA
 from taxi_showcase.silver_helpers import (
     add_trip_features,
     dedup_keep_first,
@@ -30,6 +32,7 @@ def main():
     print(f"Bronze: {bronze_table}")
     print(f"Silver: {silver_table}")
 
+    validate_table_schema(bronze_table, BRONZE_SCHEMA)
     df_bronze = spark.table(bronze_table)
     print(f"Zeilen in Bronze: {df_bronze.count():,}")
 
@@ -115,8 +118,8 @@ def main():
         print(f"  {status} {label}: {out_of_range} Werte ausserhalb [{lo}, {hi}]")
 
     # Write DLQ and Silver
-    write_dlq(df_dlq, dlq_table)
-    write_silver(df_silver, silver_table)
+    write_dlq(df_dlq, dlq_table, DLQ_SCHEMA)
+    write_silver(df_silver, silver_table, SILVER_SCHEMA)
 
 
 if __name__ == "__main__":

@@ -15,3 +15,8 @@ TRACKING_SCHEMA = StructType([
     StructField("file_size", LongType(), False),
     StructField("ingested_at", TimestampType(), False),
 ])
+
+TRACKING_COLUMNS = {
+    field.name: field.dataType.simpleString()
+    for field in TRACKING_SCHEMA.fields
+}

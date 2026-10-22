@@ -11,7 +11,12 @@ from pyspark.sql.functions import col, lit
 
 from taxi_showcase.ingest_helpers import verify_bronze
 from taxi_showcase.pipelines.weather.config import CONFIG
-from taxi_showcase.schema import load_with_schema_evolution, validate_schema
+from taxi_showcase.schema import (
+    load_to_bronze,
+    validate_dataframe_schema,
+    validate_table_schema,
+)
+from taxi_showcase.schemas.weather import BRONZE_SCHEMA
 from taxi_showcase.tracking import get_pending_ingest_files
 
 spark = SparkSession.builder.getOrCreate()
@@ -54,23 +59,24 @@ def main():
     for f in new_files:
         print(f"  {f.file_name}")
 
-    # Schema-Check against first file
-    if new_files:
-        sample = new_files[0]
-        if os.path.exists(sample.file_path):
-            print(f"Schema-Check gegen: {sample.file_name}")
-            sample_df = read_open_meteo_csv(sample.file_path)
-            sample_df.printSchema()
-            print(f"Zeilen: {sample_df.count()}")
-            actual_cols = {f.name: f.dataType.simpleString() for f in sample_df.schema.fields}
-            validate_schema(actual_cols, cfg["expected_columns"])
-        else:
-            print(f"\u26a0\ufe0f  Datei nicht gefunden: {sample.file_name}")
+    pending_dataframes = []
+    for file_info in new_files:
+        if not os.path.exists(file_info.file_path):
+            print(f"\u26a0\ufe0f  Datei nicht gefunden: {file_info.file_name}")
+            continue
+        print(f"Schema-Check gegen: {file_info.file_name}")
+        raw_df = read_open_meteo_csv(file_info.file_path)
+        validate_dataframe_schema(
+            raw_df,
+            cfg["expected_columns"],
+            context=f"Quelldatei '{file_info.file_name}'",
+        )
+        pending_dataframes.append((file_info, raw_df))
 
     # Load into Bronze (with Column Mapping for special characters)
-    if new_files:
+    if pending_dataframes:
         if not spark.catalog.tableExists(bronze_table):
-            sample_df = read_open_meteo_csv(new_files[0].file_path)
+            sample_df = pending_dataframes[0][1]
             col_defs = [f"`{f.name}` {f.dataType.simpleString()}" for f in sample_df.schema.fields]
             col_defs.append("_source_file string")
             col_defs.append("_ingested_at timestamp")
@@ -87,15 +93,20 @@ def main():
 
         total_rows = 0
         loaded_count = 0
-        for f in new_files:
+        for f, df in pending_dataframes:
             if not os.path.exists(f.file_path):
                 print(f"\u26a0\ufe0f  Datei nicht gefunden, \u00fcberspringe: {f.file_name}")
                 continue
 
             print(f"Lade {f.file_name} ...")
-            df = read_open_meteo_csv(f.file_path)
             row_count = df.count()
-            load_with_schema_evolution(df, f.file_name, bronze_table)
+            load_to_bronze(
+                df,
+                f.file_name,
+                bronze_table,
+                cfg["expected_columns"],
+                BRONZE_SCHEMA,
+            )
             total_rows += row_count
             loaded_count += 1
             print(f"  -> {row_count:,} Zeilen geladen")
@@ -106,6 +117,7 @@ def main():
             print("\nKeine Dateien geladen.")
     else:
         print("Keine neuen Dateien zum Laden. Bronze ist bereits aktuell.")
+        validate_table_schema(bronze_table, BRONZE_SCHEMA)
 
     verify_bronze(bronze_table)
 

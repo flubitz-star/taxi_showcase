@@ -8,10 +8,16 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, lit
 
 from taxi_showcase.pipelines.bike.config import CONFIG
+from taxi_showcase.schema import validate_table_schema
+from taxi_showcase.schemas.bike import BRONZE_SCHEMA, DLQ_SCHEMA, SILVER_SCHEMA
 from taxi_showcase.silver_helpers import (
-    validate_timestamp_columns, filter_temporal_outliers,
-    add_trip_features, dedup_keep_first, report_null_counts,
-    write_dlq, write_silver,
+    add_trip_features,
+    dedup_keep_first,
+    filter_temporal_outliers,
+    report_null_counts,
+    validate_timestamp_columns,
+    write_dlq,
+    write_silver,
 )
 
 spark = SparkSession.builder.getOrCreate()
@@ -26,6 +32,7 @@ def main():
     print(f"Bronze: {bronze_table}")
     print(f"Silver: {silver_table}")
 
+    validate_table_schema(bronze_table, BRONZE_SCHEMA)
     df_bronze = spark.table(bronze_table)
     print(f"Zeilen in Bronze: {df_bronze.count():,}")
 
@@ -56,7 +63,7 @@ def main():
 
     # Add derived columns
     df_silver = add_trip_features(df_consistent, "started_at", "ended_at")
-    print(f"  Abgeleitete Spalten: trip_duration_min, pickup_dayofweek, pickup_weekday, is_weekend")
+    print("  Abgeleitete Spalten: trip_duration_min, pickup_dayofweek, pickup_weekday, is_weekend")
     print(f"  Zeilen nach Konsistenz-Filter: {df_silver.count():,}")
 
     # Check 4: Dedup on ride_id
@@ -72,8 +79,8 @@ def main():
     ])
 
     # Write DLQ and Silver
-    write_dlq(df_dlq, dlq_table)
-    write_silver(df_silver, silver_table)
+    write_dlq(df_dlq, dlq_table, DLQ_SCHEMA)
+    write_silver(df_silver, silver_table, SILVER_SCHEMA)
 
 
 if __name__ == "__main__":

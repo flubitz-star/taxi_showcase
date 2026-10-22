@@ -2,8 +2,8 @@
 
 EXPECTED_COLUMNS = {
     "VendorID":              "int",
-    "tpep_pickup_datetime":  "timestamp",
-    "tpep_dropoff_datetime": "timestamp",
+    "tpep_pickup_datetime":  "timestamp_ntz",
+    "tpep_dropoff_datetime": "timestamp_ntz",
     "passenger_count":       "bigint",
     "trip_distance":         "double",
     "RatecodeID":            "bigint",

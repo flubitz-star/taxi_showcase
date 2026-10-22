@@ -1,22 +1,24 @@
-"""Expected source columns and CSV options for CitiBike trips."""
+"""Schema contracts for bike Bronze, Silver, and DLQ tables."""
 
-EXPECTED_COLUMNS = {
-    "ride_id":            "string",
-    "rideable_type":      "string",
-    "started_at":         "timestamp",
-    "ended_at":           "timestamp",
-    "start_station_name": "string",
-    "start_station_id":   "string",
-    "end_station_name":   "string",
-    "end_station_id":     "string",
-    "start_lat":          "double",
-    "start_lng":          "double",
-    "end_lat":            "double",
-    "end_lng":            "double",
-    "member_casual":      "string",
+from taxi_showcase.pipelines.bike.schema import EXPECTED_COLUMNS
+
+BRONZE_SCHEMA = {
+    **EXPECTED_COLUMNS,
+    "_source_file": "string",
+    "_ingested_at": "timestamp",
 }
 
-CSV_OPTIONS = {
-    "header": True,
-    "timestampFormat": "yyyy-MM-dd HH:mm:ss[.SSS]",
+SILVER_SCHEMA = {
+    **BRONZE_SCHEMA,
+    "trip_duration_min": "double",
+    "pickup_dayofweek": "int",
+    "pickup_weekday": "string",
+    "is_weekend": "boolean",
+    "_silver_processed_at": "timestamp",
+}
+
+DLQ_SCHEMA = {
+    **SILVER_SCHEMA,
+    "_dlq_reason": "string",
+    "_dlq_removed_at": "timestamp",
 }

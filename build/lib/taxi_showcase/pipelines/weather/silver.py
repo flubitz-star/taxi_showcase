@@ -4,11 +4,22 @@ Type casting, dedup, null checks, range validation, completeness check.
 """
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, current_timestamp, date_format, count as spark_count
+from pyspark.sql.functions import col, current_timestamp, date_format
+from pyspark.sql.functions import count as spark_count
 
 from taxi_showcase.pipelines.weather.config import CONFIG
-from taxi_showcase.timestamp_utils import validate_timestamp_column, print_timestamp_report, normalize_timestamp
-from taxi_showcase.silver_helpers import dedup_keep_first, report_null_counts, write_silver
+from taxi_showcase.schema import validate_table_schema
+from taxi_showcase.schemas.weather import BRONZE_SCHEMA, SILVER_SCHEMA
+from taxi_showcase.silver_helpers import (
+    dedup_keep_first,
+    report_null_counts,
+    write_silver,
+)
+from taxi_showcase.timestamp_utils import (
+    normalize_timestamp,
+    print_timestamp_report,
+    validate_timestamp_column,
+)
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -21,6 +32,7 @@ def main():
     print(f"Bronze: {bronze_table}")
     print(f"Silver: {silver_table}")
 
+    validate_table_schema(bronze_table, BRONZE_SCHEMA)
     df_bronze = spark.table(bronze_table)
     print(f"Zeilen in Bronze: {df_bronze.count():,}")
 
@@ -41,7 +53,6 @@ def main():
         .withColumn("snow_depth_m",      col("snow_depth (m)").cast("double"))
         .withColumn("latitude",           col("latitude").cast("double"))
         .withColumn("longitude",          col("longitude").cast("double"))
-        .withColumn("elevation_m",        col("elevation").cast("double"))
         .withColumn("utc_offset_seconds", col("utc_offset_seconds").cast("int"))
         .withColumn("_silver_processed_at", current_timestamp())
     )
@@ -96,10 +107,10 @@ def main():
         hours_per_day.filter("hours < 24").show(truncate=False)
 
     # Write Silver table
-    write_silver(df_silver, silver_table)
+    write_silver(df_silver, silver_table, SILVER_SCHEMA)
 
     # Verify
-    print(f"\nStichprobe (5 Zeilen):")
+    print("\nStichprobe (5 Zeilen):")
     spark.sql(f"""
         SELECT ts, temperature_2m_c, rain_mm, snowfall_cm,
                precipitation_mm, snow_depth_m

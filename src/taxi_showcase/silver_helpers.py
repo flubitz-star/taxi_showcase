@@ -18,6 +18,7 @@ from pyspark.sql.functions import (
 )
 from pyspark.sql.window import Window
 
+from taxi_showcase.schema import write_table
 from taxi_showcase.timestamp_utils import (
     print_timestamp_report,
     validate_timestamp_column,
@@ -136,8 +137,8 @@ def report_null_counts(df, cols):
         print(f"  {status} {c}: {cnt} NULLs")
 
 
-def write_dlq(df_dlq, dlq_table):
-    """Schreibt die DLQ-Tabelle (overwrite, mergeSchema)."""
+def write_dlq(df_dlq, dlq_table, expected_schema):
+    """Validate and write a DLQ table."""
     df_dlq = df_dlq.withColumn("_dlq_removed_at", current_timestamp())
 
     dlq_count = df_dlq.count()
@@ -148,27 +149,15 @@ def write_dlq(df_dlq, dlq_table):
         .show(truncate=False)
 
     print(f"Schreibe in {dlq_table} ...")
-    (
-        df_dlq.write
-        .format("delta")
-        .option("mergeSchema", "true")
-        .mode("overwrite")
-        .saveAsTable(dlq_table)
-    )
+    write_table(df_dlq, dlq_table, expected_schema)
     print(f"\u2705 {dlq_count:,} Zeilen in {dlq_table} geschrieben.")
 
 
-def write_silver(df, silver_table):
-    """Schreibt die Silver-Tabelle (overwrite, mergeSchema)."""
+def write_silver(df, silver_table, expected_schema):
+    """Validate and write a Silver table."""
     catalog = silver_table.split(".")[0]
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.silver")
 
     print(f"Schreibe in {silver_table} ...")
-    (
-        df.write
-        .format("delta")
-        .option("mergeSchema", "true")
-        .mode("overwrite")
-        .saveAsTable(silver_table)
-    )
+    write_table(df, silver_table, expected_schema)
     print(f"\u2705 {df.count():,} Zeilen in {silver_table} geschrieben.")

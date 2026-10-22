@@ -3,6 +3,7 @@ pyproject.toml
 src/taxi_showcase/__init__.py
 src/taxi_showcase/ingest_helpers.py
 src/taxi_showcase/schema.py
+src/taxi_showcase/schema_validation.py
 src/taxi_showcase/silver_helpers.py
 src/taxi_showcase/timestamp_utils.py
 src/taxi_showcase/tracking.py
@@ -33,3 +34,9 @@ src/taxi_showcase/pipelines/weather/ingress.py
 src/taxi_showcase/pipelines/weather/landing_zone.py
 src/taxi_showcase/pipelines/weather/schema.py
 src/taxi_showcase/pipelines/weather/silver.py
+src/taxi_showcase/schemas/__init__.py
+src/taxi_showcase/schemas/bike.py
+src/taxi_showcase/schemas/gold.py
+src/taxi_showcase/schemas/taxi.py
+src/taxi_showcase/schemas/weather.py
+tests/test_schema_validation.py

@@ -32,7 +32,8 @@ taxi_showcase/
     ├── timestamp_utils.py   # Timestamp validation
     ├── ingest_helpers.py    # run_landing_zone_check, verify_bronze
     ├── silver_helpers.py    # Silver checks, DLQ, write_silver
-    └── pipelines/           # Pipeline entry points and source schemas
+    ├── schemas/            # Expected schemas for all persisted tables
+    └── pipelines/          # Pipeline entry points and source schemas
         ├── shared/          # Shared config and tracking schema
         ├── weather/         # Pipeline scripts, config.py, and schema.py
         ├── taxi/            # Pipeline scripts, config.py, and schema.py
@@ -41,9 +42,21 @@ taxi_showcase/
 
 Source schemas and pipeline-specific table/input configuration live alongside
 their respective pipelines. Shared catalog settings, metadata columns, Gold
-table names, and the tracking schema live in `pipelines/shared/`. Silver, DLQ,
-and Gold schemas are derived from their transformation DataFrames, preserving
-the existing schema-evolution behavior.
+table names, and the tracking schema live in `pipelines/shared/`. Explicit
+contracts for tracking, Bronze, Silver, DLQ, and Gold tables live in
+`schemas/`.
+
+Incoming files and output DataFrames are checked against these contracts, as
+are existing tables before use. Schema changes fail the job with the expected
+and actual columns or types; automatic Delta schema merging is disabled. To
+adopt an intentional source change, update the corresponding contract and
+transformation together.
+
+Silver event timestamps use `timestamp_ntz` consistently for local taxi, bike,
+and weather times. Bronze retains the source timestamp types; Bike timestamps
+are cast from `timestamp` to `timestamp_ntz` in Silver, while Weather strings
+are parsed directly as `timestamp_ntz`. Processing metadata such as
+`_ingested_at` remains `timestamp`.
 
 ## Deploy
 
@@ -96,6 +109,13 @@ locally:
 ```bash
 python -m pip install ruff
 ruff check src
+```
+
+Run the schema validation unit tests with:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m unittest discover -s tests -v
 ```
 
 ## Unity Catalog

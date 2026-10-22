@@ -8,6 +8,8 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, lit
 
 from taxi_showcase.pipelines.bike.config import CONFIG
+from taxi_showcase.schema import validate_table_schema
+from taxi_showcase.schemas.bike import BRONZE_SCHEMA, DLQ_SCHEMA, SILVER_SCHEMA
 from taxi_showcase.silver_helpers import (
     add_trip_features,
     dedup_keep_first,
@@ -30,11 +32,24 @@ def main():
     print(f"Bronze: {bronze_table}")
     print(f"Silver: {silver_table}")
 
+    validate_table_schema(bronze_table, BRONZE_SCHEMA)
     df_bronze = spark.table(bronze_table)
     print(f"Zeilen in Bronze: {df_bronze.count():,}")
 
     # Check 1: Timestamp validation
     validate_timestamp_columns(df_bronze, ["started_at", "ended_at"])
+
+    df_bronze = (
+        df_bronze
+        .withColumn(
+            "started_at",
+            col("started_at").cast("timestamp_ntz"),
+        )
+        .withColumn(
+            "ended_at",
+            col("ended_at").cast("timestamp_ntz"),
+        )
+    )
 
     # Check 2: Temporal outlier detection
     df_filtered, df_dlq = filter_temporal_outliers(
@@ -76,8 +91,8 @@ def main():
     ])
 
     # Write DLQ and Silver
-    write_dlq(df_dlq, dlq_table)
-    write_silver(df_silver, silver_table)
+    write_dlq(df_dlq, dlq_table, DLQ_SCHEMA)
+    write_silver(df_silver, silver_table, SILVER_SCHEMA)
 
 
 if __name__ == "__main__":

@@ -1,1 +1,1 @@
-"""Data schema contracts for source and operational tables."""
+"""Expected schemas for every persisted pipeline table."""

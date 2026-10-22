@@ -3,9 +3,11 @@
 from pyspark.sql import SparkSession
 
 from taxi_showcase.tracking import (
-    list_landing_files, ensure_tracking_table,
-    get_known_checksums, split_new_vs_known,
+    ensure_tracking_table,
+    get_known_checksums,
+    list_landing_files,
     register_new_files,
+    split_new_vs_known,
 )
 
 spark = SparkSession.builder.getOrCreate()

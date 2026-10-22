@@ -5,13 +5,19 @@ passenger_count imputation, range checks, DLQ, write silver.
 """
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, lit, when, isnull
+from pyspark.sql.functions import col, isnull, lit, when
 
 from taxi_showcase.pipelines.taxi.config import CONFIG
+from taxi_showcase.schema import validate_table_schema
+from taxi_showcase.schemas.taxi import BRONZE_SCHEMA, DLQ_SCHEMA, SILVER_SCHEMA
 from taxi_showcase.silver_helpers import (
-    validate_timestamp_columns, filter_temporal_outliers,
-    add_trip_features, dedup_keep_first, report_null_counts,
-    write_dlq, write_silver,
+    add_trip_features,
+    dedup_keep_first,
+    filter_temporal_outliers,
+    report_null_counts,
+    validate_timestamp_columns,
+    write_dlq,
+    write_silver,
 )
 
 spark = SparkSession.builder.getOrCreate()
@@ -26,6 +32,7 @@ def main():
     print(f"Bronze: {bronze_table}")
     print(f"Silver: {silver_table}")
 
+    validate_table_schema(bronze_table, BRONZE_SCHEMA)
     df_bronze = spark.table(bronze_table)
     print(f"Zeilen in Bronze: {df_bronze.count():,}")
 
@@ -66,7 +73,7 @@ def main():
     df_silver = add_trip_features(df_consistent, "tpep_pickup_datetime", "tpep_dropoff_datetime")
     # Flag negative fares (not removed)
     df_silver = df_silver.withColumn("_has_negative_fare", col("fare_amount") < 0)
-    print(f"  Abgeleitete Spalten: trip_duration_min, _has_negative_fare, pickup_dayofweek, pickup_weekday, is_weekend")
+    print("  Abgeleitete Spalten: trip_duration_min, _has_negative_fare, pickup_dayofweek, pickup_weekday, is_weekend")
     print(f"  Zeilen nach Konsistenz-Filter: {df_silver.count():,}")
 
     # Check 4: Dedup
@@ -79,7 +86,7 @@ def main():
 
     # Check 5: Null handling (passenger_count imputation)
     null_passengers = df_silver.filter(isnull(col("passenger_count"))).count()
-    print(f"\n\u2500\u2500 Null-Behandlung \u2500\u2500")
+    print("\n\u2500\u2500 Null-Behandlung \u2500\u2500")
     print(f"  passenger_count NULLs vor Imputation: {null_passengers:,}")
     if null_passengers > 0:
         df_silver = df_silver.withColumn(
@@ -90,7 +97,7 @@ def main():
     else:
         df_silver = df_silver.withColumn("_passenger_count_imputed", lit(False))
 
-    print(f"  -> NULLs mit 1 gefuellt, _passenger_count_imputed Flag gesetzt.")
+    print("  -> NULLs mit 1 gefuellt, _passenger_count_imputed Flag gesetzt.")
 
     report_null_counts(df_silver, [
         "VendorID", "tpep_pickup_datetime", "tpep_dropoff_datetime",
@@ -111,8 +118,8 @@ def main():
         print(f"  {status} {label}: {out_of_range} Werte ausserhalb [{lo}, {hi}]")
 
     # Write DLQ and Silver
-    write_dlq(df_dlq, dlq_table)
-    write_silver(df_silver, silver_table)
+    write_dlq(df_dlq, dlq_table, DLQ_SCHEMA)
+    write_silver(df_silver, silver_table, SILVER_SCHEMA)
 
 
 if __name__ == "__main__":

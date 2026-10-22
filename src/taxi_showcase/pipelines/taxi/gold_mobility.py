@@ -10,6 +10,14 @@ from taxi_showcase.pipelines.bike.config import CONFIG as BIKE_CONFIG
 from taxi_showcase.pipelines.shared.config import CATALOG, GOLD_TABLES
 from taxi_showcase.pipelines.taxi.config import CONFIG as TAXI_CONFIG
 from taxi_showcase.pipelines.weather.config import CONFIG as WEATHER_CONFIG
+from taxi_showcase.schema import validate_table_schema, write_table
+from taxi_showcase.schemas.bike import SILVER_SCHEMA as BIKE_SILVER_SCHEMA
+from taxi_showcase.schemas.gold import (
+    MOBILITY_DAILY_COMPARISON_SCHEMA,
+    MOBILITY_HOURLY_COMPARISON_SCHEMA,
+)
+from taxi_showcase.schemas.taxi import SILVER_SCHEMA as TAXI_SILVER_SCHEMA
+from taxi_showcase.schemas.weather import SILVER_SCHEMA as WEATHER_SILVER_SCHEMA
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -22,6 +30,10 @@ def main():
     taxi_silver = TAXI_CONFIG["silver_table"]
     bike_silver = BIKE_CONFIG["silver_table"]
     weather_silver = WEATHER_CONFIG["silver_table"]
+
+    validate_table_schema(taxi_silver, TAXI_SILVER_SCHEMA)
+    validate_table_schema(bike_silver, BIKE_SILVER_SCHEMA)
+    validate_table_schema(weather_silver, WEATHER_SILVER_SCHEMA)
 
     df_taxi = spark.table(taxi_silver)
     df_bike = spark.table(bike_silver)
@@ -123,13 +135,10 @@ def main():
     print(f"Mobility Daily Zeilen: {df_mobility.count()}")
 
     print(f"Schreibe in {daily_table} ...")
-    (
-        df_mobility
-        .orderBy("pickup_date")
-        .write
-        .option("mergeSchema", "true")
-        .mode("overwrite")
-        .saveAsTable(daily_table)
+    write_table(
+        df_mobility.orderBy("pickup_date"),
+        daily_table,
+        MOBILITY_DAILY_COMPARISON_SCHEMA,
     )
     row_count = spark.table(daily_table).count()
     print(f"\u2705 {row_count:,} Zeilen in {daily_table} geschrieben.")
@@ -211,13 +220,10 @@ def main():
 
     print(f"Mobility Hourly Zeilen: {df_mobility_hourly.count()}")
     print(f"Schreibe in {hourly_table} ...")
-    (
-        df_mobility_hourly
-        .orderBy("pickup_date", "pickup_hour")
-        .write
-        .option("mergeSchema", "true")
-        .mode("overwrite")
-        .saveAsTable(hourly_table)
+    write_table(
+        df_mobility_hourly.orderBy("pickup_date", "pickup_hour"),
+        hourly_table,
+        MOBILITY_HOURLY_COMPARISON_SCHEMA,
     )
     row_count_h = spark.table(hourly_table).count()
     print(f"\u2705 {row_count_h:,} Zeilen in {hourly_table} geschrieben.")

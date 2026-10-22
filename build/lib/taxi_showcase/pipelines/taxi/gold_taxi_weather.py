@@ -6,13 +6,34 @@ INNER JOIN Trips x Weather per pickup-hour. Coverage guard: skip write if 0 matc
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, hour, count, avg, sum as sum_, count as count_,
-    round as round_, when, countDistinct, date_trunc,
+    avg,
+    col,
+    countDistinct,
+    date_trunc,
+    hour,
+    when,
+)
+from pyspark.sql.functions import (
+    count as count_,
+)
+from pyspark.sql.functions import (
+    round as round_,
+)
+from pyspark.sql.functions import (
+    sum as sum_,
 )
 
 from taxi_showcase.pipelines.shared.config import CATALOG, GOLD_TABLES
 from taxi_showcase.pipelines.taxi.config import CONFIG as TAXI_CONFIG
 from taxi_showcase.pipelines.weather.config import CONFIG as WEATHER_CONFIG
+from taxi_showcase.schema import validate_table_schema, write_table
+from taxi_showcase.schemas.gold import (
+    DAILY_METRICS_SCHEMA,
+    HOURLY_RIDERSHIP_SCHEMA,
+    TAXI_WEATHER_ENRICHED_SCHEMA,
+)
+from taxi_showcase.schemas.taxi import SILVER_SCHEMA as TAXI_SILVER_SCHEMA
+from taxi_showcase.schemas.weather import SILVER_SCHEMA as WEATHER_SILVER_SCHEMA
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -31,6 +52,9 @@ def main():
     print(f"Gold Enriched:  {enriched_table}")
     print(f"Gold Daily:     {daily_table}")
     print(f"Gold Hourly:    {hourly_table}")
+
+    validate_table_schema(taxi_silver, TAXI_SILVER_SCHEMA)
+    validate_table_schema(weather_silver, WEATHER_SILVER_SCHEMA)
 
     # Coverage check & join
     trips = spark.read.table(taxi_silver)
@@ -70,9 +94,7 @@ def main():
             "precipitation_mm", "snow_depth_m",
         )
     )
-    enriched.write.format("delta") \
-        .option("mergeSchema", "true") \
-        .mode("overwrite").saveAsTable(enriched_table)
+    write_table(enriched, enriched_table, TAXI_WEATHER_ENRICHED_SCHEMA)
     print(f"taxi_weather_enriched geschrieben: {count_matched:,} Rows")
 
     # Step 3: daily_metrics
@@ -91,9 +113,7 @@ def main():
             countDistinct(when(col("snowfall_cm") > 0, hour(col("tpep_pickup_datetime")))).alias("snowfall_hours"),
         )
     )
-    daily_metrics.write.format("delta") \
-        .option("mergeSchema", "true") \
-        .mode("overwrite").saveAsTable(daily_table)
+    write_table(daily_metrics, daily_table, DAILY_METRICS_SCHEMA)
     print(f"daily_metrics geschrieben: {daily_metrics.count():,} Rows")
 
     # Step 4: hourly_ridership
@@ -111,9 +131,7 @@ def main():
             sum_(when(col("rain_mm") > 0, 1).otherwise(0)).alias("rainy_trips"),
         )
     )
-    hourly_ridership.write.format("delta") \
-        .option("mergeSchema", "true") \
-        .mode("overwrite").saveAsTable(hourly_table)
+    write_table(hourly_ridership, hourly_table, HOURLY_RIDERSHIP_SCHEMA)
     print(f"hourly_ridership geschrieben: {hourly_ridership.count():,} Rows")
 
     # Summary

@@ -8,6 +8,8 @@ from pyspark.sql.functions import col, current_timestamp, date_format
 from pyspark.sql.functions import count as spark_count
 
 from taxi_showcase.pipelines.weather.config import CONFIG
+from taxi_showcase.schema import validate_table_schema
+from taxi_showcase.schemas.weather import BRONZE_SCHEMA, SILVER_SCHEMA
 from taxi_showcase.silver_helpers import (
     dedup_keep_first,
     report_null_counts,
@@ -30,6 +32,7 @@ def main():
     print(f"Bronze: {bronze_table}")
     print(f"Silver: {silver_table}")
 
+    validate_table_schema(bronze_table, BRONZE_SCHEMA)
     df_bronze = spark.table(bronze_table)
     print(f"Zeilen in Bronze: {df_bronze.count():,}")
 
@@ -42,7 +45,13 @@ def main():
     # Transformation: String -> typed columns
     df_silver = (
         df_bronze
-        .transform(lambda df: normalize_timestamp(df, "time", output_col="ts"))
+        .transform(
+            lambda df: normalize_timestamp(
+                df,
+                "time",
+                output_col="ts",
+            )
+        )
         .withColumn("temperature_2m_c",   col("temperature_2m (\u00b0C)").cast("double"))
         .withColumn("rain_mm",            col("rain (mm)").cast("double"))
         .withColumn("snowfall_cm",        col("snowfall (cm)").cast("double"))
@@ -50,7 +59,6 @@ def main():
         .withColumn("snow_depth_m",      col("snow_depth (m)").cast("double"))
         .withColumn("latitude",           col("latitude").cast("double"))
         .withColumn("longitude",          col("longitude").cast("double"))
-        .withColumn("elevation_m",        col("elevation").cast("double"))
         .withColumn("utc_offset_seconds", col("utc_offset_seconds").cast("int"))
         .withColumn("_silver_processed_at", current_timestamp())
     )
@@ -105,7 +113,7 @@ def main():
         hours_per_day.filter("hours < 24").show(truncate=False)
 
     # Write Silver table
-    write_silver(df_silver, silver_table)
+    write_silver(df_silver, silver_table, SILVER_SCHEMA)
 
     # Verify
     print("\nStichprobe (5 Zeilen):")
