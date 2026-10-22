@@ -1,7 +1,13 @@
 """Spark-independent validation for schema contracts."""
 
+from collections.abc import Mapping
 
-def validate_schema(actual_cols, expected_columns, context="DataFrame"):
+
+def validate_schema(
+    actual_cols: Mapping[str, str],
+    expected_columns: Mapping[str, str],
+    context: str = "DataFrame",
+) -> None:
     """Raise an actionable error unless columns and types match the contract."""
     expected_names = set(expected_columns)
     actual_names = set(actual_cols)

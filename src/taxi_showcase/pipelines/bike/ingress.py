@@ -11,7 +11,8 @@ import zipfile
 from pyspark.sql import SparkSession
 
 from taxi_showcase.ingest_helpers import run_landing_zone_check, verify_bronze
-from taxi_showcase.pipelines.bike.config import CONFIG
+from taxi_showcase.pipelines.bike.config import create_config
+from taxi_showcase.pipelines.shared.config import parse_catalog_argument
 from taxi_showcase.schema import (
     expected_to_struct_type,
     load_to_bronze,
@@ -24,10 +25,10 @@ from taxi_showcase.tracking import get_pending_ingest_files
 spark = SparkSession.builder.getOrCreate()
 
 
-def main():
-    cfg = CONFIG
-    bronze_table = cfg["bronze_table"]
-    lz_path = cfg["landing_zone"]
+def main() -> None:
+    cfg = create_config(parse_catalog_argument())
+    bronze_table = cfg.bronze_table
+    lz_path = cfg.landing_zone
 
     print(f"Bronze:       {bronze_table}")
 
@@ -35,14 +36,14 @@ def main():
     run_landing_zone_check(cfg)
 
     # Files registered but not yet in bronze
-    pending = get_pending_ingest_files(cfg["tracking_table"], bronze_table)
+    pending = get_pending_ingest_files(cfg.tracking_table, bronze_table)
     print(f"\nZu ladende Dateien: {len(pending)}")
     for f in pending:
         print(f"  {f.file_name}")
 
     # Lese-Schema & CSV-Optionen from config
-    bike_csv_schema = expected_to_struct_type(cfg["expected_columns"])
-    csv_options = cfg["csv_options"]
+    bike_csv_schema = expected_to_struct_type(cfg.expected_columns)
+    csv_options = cfg.csv_options
     print(f"Lese-Schema abgeleitet: {len(bike_csv_schema.fields)} Spalten")
 
     if pending:
@@ -63,7 +64,7 @@ def main():
             for n in csv_names:
                 print(f"  {n}")
 
-        expected_header = list(cfg["expected_columns"])
+        expected_header = list(cfg.expected_columns)
         for csv_name in csv_names:
             csv_file = os.path.join(extract_dir, csv_name)
             actual_header = spark.read.options(**csv_options).csv(csv_file).columns
@@ -83,7 +84,7 @@ def main():
         # Schema validation
         validate_dataframe_schema(
             df,
-            cfg["expected_columns"],
+            cfg.expected_columns,
             context=f"Bike-Quelldatei '{zip_info.file_name}'",
         )
 
@@ -93,7 +94,7 @@ def main():
             df,
             zip_info.file_name,
             bronze_table,
-            cfg["expected_columns"],
+            cfg.expected_columns,
             BRONZE_SCHEMA,
         )
         print(f"\nIngest abgeschlossen: {row_count:,} Zeilen in {bronze_table} geladen.")

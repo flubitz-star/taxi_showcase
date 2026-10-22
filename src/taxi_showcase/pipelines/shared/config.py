@@ -1,14 +1,47 @@
 """Configuration shared by multiple pipelines."""
 
-CATALOG = "workspace"
-LANDING_ZONE_ROOT = f"/Volumes/{CATALOG}/raw_files/landing_zone"
+import argparse
+import re
+from dataclasses import dataclass
+from typing import Protocol
 
-META_COLUMNS = {"_source_file", "_ingested_at"}
 
-GOLD_TABLES = {
-    "taxi_weather_enriched": f"{CATALOG}.gold.taxi_weather_enriched",
-    "daily_metrics": f"{CATALOG}.gold.daily_metrics",
-    "hourly_ridership": f"{CATALOG}.gold.hourly_ridership",
-    "mobility_daily_comparison": f"{CATALOG}.gold.mobility_daily_comparison",
-    "mobility_hourly_comparison": f"{CATALOG}.gold.mobility_hourly_comparison",
-}
+def parse_catalog_argument() -> str:
+    """Read the deployment's Unity Catalog name from the task arguments."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--catalog", required=True)
+    catalog = parser.parse_args().catalog
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", catalog):
+        raise ValueError(
+            "Catalog must be a simple Unity Catalog identifier containing "
+            "letters, digits, or underscores."
+        )
+    return catalog
+
+
+def landing_zone_root(catalog: str) -> str:
+    return f"/Volumes/{catalog}/raw_files/landing_zone"
+
+
+class LandingZoneConfig(Protocol):
+    landing_zone: str
+    tracking_table: str
+
+
+@dataclass(frozen=True)
+class GoldTables:
+    taxi_weather_enriched: str
+    daily_metrics: str
+    hourly_ridership: str
+    mobility_daily_comparison: str
+    mobility_hourly_comparison: str
+
+
+def gold_tables(catalog: str) -> GoldTables:
+    return GoldTables(
+        taxi_weather_enriched=f"{catalog}.gold.taxi_weather_enriched",
+        daily_metrics=f"{catalog}.gold.daily_metrics",
+        hourly_ridership=f"{catalog}.gold.hourly_ridership",
+        mobility_daily_comparison=f"{catalog}.gold.mobility_daily_comparison",
+        mobility_hourly_comparison=f"{catalog}.gold.mobility_hourly_comparison",
+    )

@@ -1,6 +1,9 @@
 """Timestamp validation and normalization functions."""
 
-from pyspark.sql import SparkSession
+from datetime import datetime
+from typing import TypedDict
+
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
     col,
     isnull,
@@ -17,7 +20,21 @@ from pyspark.sql.functions import (
 spark = SparkSession.builder.getOrCreate()
 
 
-def validate_timestamp_column(df, col_name, expected_format=None):
+class TimestampValidationResult(TypedDict):
+    total_rows: int
+    parseable: int
+    unparseable: int
+    null_count: int
+    min_ts: datetime | None
+    max_ts: datetime | None
+    unparseable_sample: list[str]
+
+
+def validate_timestamp_column(
+    df: DataFrame,
+    col_name: str,
+    expected_format: str | None = None,
+) -> TimestampValidationResult:
     """Prueft eine Spalte auf Timestamp-Parsebarkeit."""
     if expected_format:
         parsed_expr = to_timestamp(col(col_name), expected_format)
@@ -61,7 +78,7 @@ def validate_timestamp_column(df, col_name, expected_format=None):
     }
 
 
-def print_timestamp_report(result, col_name):
+def print_timestamp_report(result: TimestampValidationResult, col_name: str) -> None:
     """Druckt einen formatierten Bericht fuer validate_timestamp_column()."""
     print(f"\u2500\u2500 Timestamp-Validierung: '{col_name}' \u2500\u2500")
     print(f"  Gesamtzeilen:      {result['total_rows']:,}")
@@ -78,7 +95,12 @@ def print_timestamp_report(result, col_name):
         print(f"  \u26a0\ufe0f  {result['unparseable']} Wert(e) konnten nicht geparst werden!")
 
 
-def normalize_timestamp(df, col_name, output_col=None, expected_format=None):
+def normalize_timestamp(
+    df: DataFrame,
+    col_name: str,
+    output_col: str | None = None,
+    expected_format: str | None = None,
+) -> DataFrame:
     """Parst eine lokale Zeitspalte zu timestamp_ntz."""
     if output_col is None:
         output_col = col_name

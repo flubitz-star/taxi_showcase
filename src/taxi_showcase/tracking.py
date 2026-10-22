@@ -2,10 +2,12 @@
 
 import hashlib
 import os
+from collections.abc import Mapping, Sequence
 from datetime import datetime
+from typing import TypedDict
 
 from databricks.sdk.runtime import dbutils
-from pyspark.sql import SparkSession
+from pyspark.sql import Row, SparkSession
 
 from taxi_showcase.pipelines.shared.tracking_schema import (
     TRACKING_COLUMNS,
@@ -16,7 +18,14 @@ from taxi_showcase.schema import validate_table_schema, write_table
 spark = SparkSession.builder.getOrCreate()
 
 
-def compute_md5(file_path):
+class LandingFile(TypedDict):
+    file_name: str
+    file_path: str
+    checksum: str
+    file_size: int
+
+
+def compute_md5(file_path: str) -> str:
     """Berechnet die MD5-Checksumme einer Datei (chunked, speicherschonend)."""
     hash_md5 = hashlib.md5()
     with open(file_path, "rb") as f:
@@ -25,7 +34,7 @@ def compute_md5(file_path):
     return hash_md5.hexdigest()
 
 
-def list_landing_files(lz_path):
+def list_landing_files(lz_path: str) -> list[LandingFile]:
     """Listet alle Dateien in einer Landing Zone inkl. MD5-Checksumme auf."""
     files = []
     for entry in dbutils.fs.ls(lz_path):
@@ -44,7 +53,7 @@ def list_landing_files(lz_path):
     return files
 
 
-def _tracking_ddl_from_schema(table_name):
+def _tracking_ddl_from_schema(table_name: str) -> str:
     """Generiert CREATE TABLE DDL aus TRACKING_SCHEMA."""
     cols = []
     for field in TRACKING_SCHEMA.fields:
@@ -59,7 +68,7 @@ def _tracking_ddl_from_schema(table_name):
     """
 
 
-def ensure_tracking_table(tracking_table):
+def ensure_tracking_table(tracking_table: str) -> None:
     """Stellt sicher, dass die Tracking-Tabelle existiert (CREATE TABLE IF NOT EXISTS)."""
     if not spark.catalog.tableExists(tracking_table):
         print(f"Tracking-Tabelle {tracking_table} existiert nicht \u2013 wird erstellt.")
@@ -68,7 +77,7 @@ def ensure_tracking_table(tracking_table):
     validate_table_schema(tracking_table, TRACKING_COLUMNS)
 
 
-def get_known_checksums(tracking_table):
+def get_known_checksums(tracking_table: str) -> dict[str, str]:
     """Laedt bekannte Checksums aus der Tracking-Tabelle -> {checksum: file_name}."""
     ensure_tracking_table(tracking_table)
     df = spark.sql(f"SELECT file_name, checksum FROM {tracking_table}")
@@ -77,7 +86,10 @@ def get_known_checksums(tracking_table):
     return known
 
 
-def split_new_vs_known(files, known_checksums):
+def split_new_vs_known(
+    files: Sequence[LandingFile],
+    known_checksums: Mapping[str, str],
+) -> tuple[list[LandingFile], list[LandingFile]]:
     """Trennt Dateien anhand der Checksumme in neue und bereits bekannte."""
     new_files, duplicate_files = [], []
     for f in files:
@@ -102,7 +114,7 @@ def split_new_vs_known(files, known_checksums):
     return new_files, duplicate_files
 
 
-def register_new_files(new_files, tracking_table):
+def register_new_files(new_files: Sequence[LandingFile], tracking_table: str) -> int:
     """Traegt neue Dateien in die Tracking-Tabelle ein (append)."""
     if not new_files:
         print("Keine neuen Dateien zum Registrieren.")
@@ -120,7 +132,7 @@ def register_new_files(new_files, tracking_table):
     return len(new_files)
 
 
-def get_pending_ingest_files(tracking_table, bronze_table):
+def get_pending_ingest_files(tracking_table: str, bronze_table: str) -> list[Row]:
     """Dateien, die registriert, aber noch nicht in Bronze geladen wurden (LEFT ANTI JOIN)."""
     if spark.catalog.tableExists(bronze_table):
         return spark.sql(f"""

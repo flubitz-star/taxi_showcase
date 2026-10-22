@@ -21,5 +21,13 @@ targets:
     mode: development
     workspace:
       profile: DEFAULT
-    variables:
-      catalog: workspace
+
+  # Vorlage fuer ein spaeteres Produktions-Target.
+  # Vor Aktivierung ein Databricks-CLI-Profil PROD konfigurieren
+  # und den Katalognamen an die Zielumgebung anpassen.
+  # prod:
+  #   mode: production
+  #   workspace:
+  #     profile: PROD
+  #   variables:
+  #     catalog: production

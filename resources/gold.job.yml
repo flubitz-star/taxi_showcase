@@ -14,11 +14,13 @@ resources:
         - task_key: gold_taxi_weather
           environment_key: default
           spark_python_task:
-            python_file: ../src/taxi_showcase/pipelines/taxi/gold_taxi_weather.py
+            python_file: ../src/taxi_showcase/pipelines/gold/gold_taxi_weather.py
+            parameters: ["--catalog", "${var.catalog}"]
 
         - task_key: gold_mobility
           depends_on:
             - task_key: gold_taxi_weather
           environment_key: default
           spark_python_task:
-            python_file: ../src/taxi_showcase/pipelines/taxi/gold_mobility.py
+            python_file: ../src/taxi_showcase/pipelines/gold/gold_mobility.py
+            parameters: ["--catalog", "${var.catalog}"]

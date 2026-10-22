@@ -7,7 +7,8 @@ passenger_count imputation, range checks, DLQ, write silver.
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, isnull, lit, when
 
-from taxi_showcase.pipelines.taxi.config import CONFIG
+from taxi_showcase.pipelines.shared.config import parse_catalog_argument
+from taxi_showcase.pipelines.taxi.config import create_config
 from taxi_showcase.schema import validate_table_schema
 from taxi_showcase.schemas.taxi import BRONZE_SCHEMA, DLQ_SCHEMA, SILVER_SCHEMA
 from taxi_showcase.silver_helpers import (
@@ -23,11 +24,11 @@ from taxi_showcase.silver_helpers import (
 spark = SparkSession.builder.getOrCreate()
 
 
-def main():
-    cfg = CONFIG
-    bronze_table = cfg["bronze_table"]
-    silver_table = cfg["silver_table"]
-    dlq_table = cfg["dlq_table"]
+def main() -> None:
+    cfg = create_config(parse_catalog_argument())
+    bronze_table = cfg.bronze_table
+    silver_table = cfg.silver_table
+    dlq_table = cfg.dlq_table
 
     print(f"Bronze: {bronze_table}")
     print(f"Silver: {silver_table}")

@@ -35,16 +35,19 @@ taxi_showcase/
     ├── schemas/            # Expected schemas for all persisted tables
     └── pipelines/          # Pipeline entry points and source schemas
         ├── shared/          # Shared config and tracking schema
+        ├── gold/            # Gold-layer analytics pipelines
         ├── weather/         # Pipeline scripts, config.py, and schema.py
         ├── taxi/            # Pipeline scripts, config.py, and schema.py
         └── bike/            # Pipeline scripts, config.py, and schema.py
 ```
 
 Source schemas and pipeline-specific table/input configuration live alongside
-their respective pipelines. Shared catalog settings, metadata columns, Gold
+their respective pipelines. Shared pipeline settings, metadata columns, Gold
 table names, and the tracking schema live in `pipelines/shared/`. Explicit
 contracts for tracking, Bronze, Silver, DLQ, and Gold tables live in
 `schemas/`.
+The Unity Catalog is defined once by the `catalog` variable in `databricks.yml`
+and passed to every pipeline task as a command-line argument.
 
 Incoming files and output DataFrames are checked against these contracts, as
 are existing tables before use. Schema changes fail the job with the expected
@@ -62,6 +65,8 @@ are parsed directly as `timestamp_ntz`. Processing metadata such as
 
 Python 3.10 or newer must be installed and available as `python` on your `PATH`.
 The jobs use Databricks serverless compute and require a workspace that supports serverless jobs.
+Currently only the `dev` target is active. `databricks.yml` contains a commented
+production-target template; configure its CLI profile and catalog before enabling it.
 
 ```bash
 # Validate
@@ -90,10 +95,9 @@ bundle and runs the `gold` job, which builds `gold_taxi_weather` followed by
 `gold_mobility`. It does not run the upstream ingestion or Silver jobs, so run
 those first when their tables need to be refreshed.
 
-The Weather helper deploys the bundle and runs `weather_silver`; it does not
-run the Landing Zone or ingress tasks. To run all Weather steps, execute the
-following task commands in order. Use the `ingest_silver` job name with the
-`--only` task selector:
+The Weather helper deploys the bundle and runs `weather_landing_zone`,
+`weather_ingress`, and `weather_silver` in sequence. To run an individual
+Weather step manually, use the `ingest_silver` job with the `--only` selector:
 
 ```powershell
 databricks bundle run ingest_silver --only weather_landing_zone --target dev
@@ -103,12 +107,12 @@ databricks bundle run ingest_silver --only weather_silver --target dev
 
 ## Code quality
 
-GitHub Actions runs Ruff on every push and pull request. To run the same check
-locally:
+GitHub Actions runs Ruff and the unit tests on every push and pull request.
+To run the same lint check locally:
 
 ```bash
 python -m pip install ruff
-ruff check src
+ruff check src tests
 ```
 
 Run the schema validation unit tests with:
@@ -120,8 +124,9 @@ python -m unittest discover -s tests -v
 
 ## Unity Catalog
 
-All tables in catalog `workspace`:
-- `workspace.raw_files.*` — tracking tables
-- `workspace.bronze.*` — raw data
-- `workspace.silver.*` — cleaned data + DLQ
-- `workspace.gold.*` — analytics tables
+All tables use the catalog configured by `catalog` in `databricks.yml`
+(default: `workspace`):
+- `<catalog>.raw_files.*` — tracking tables
+- `<catalog>.bronze.*` — raw data
+- `<catalog>.silver.*` — cleaned data + DLQ
+- `<catalog>.gold.*` — analytics tables

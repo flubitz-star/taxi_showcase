@@ -1,5 +1,7 @@
 """Schema validation and strict table writes."""
 
+from collections.abc import Mapping
+
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import current_timestamp, lit
 from pyspark.sql.types import (
@@ -33,7 +35,7 @@ _SIMPLE_NAME_TO_TYPE = {
 }
 
 
-def expected_to_struct_type(expected_columns):
+def expected_to_struct_type(expected_columns: Mapping[str, str]) -> StructType:
     """Build a Spark StructType from a name-to-type schema contract."""
     fields = []
     for name, simple in expected_columns.items():
@@ -47,15 +49,22 @@ def expected_to_struct_type(expected_columns):
     return StructType(fields)
 
 
-def _dataframe_columns(df: DataFrame):
+def _dataframe_columns(df: DataFrame) -> dict[str, str]:
     return {field.name: field.dataType.simpleString() for field in df.schema.fields}
 
 
-def validate_dataframe_schema(df: DataFrame, expected_columns, context="DataFrame"):
+def validate_dataframe_schema(
+    df: DataFrame,
+    expected_columns: Mapping[str, str],
+    context: str = "DataFrame",
+) -> None:
     validate_schema(_dataframe_columns(df), expected_columns, context)
 
 
-def validate_table_schema(table_name: str, expected_columns):
+def validate_table_schema(
+    table_name: str,
+    expected_columns: Mapping[str, str],
+) -> None:
     """Validate an existing table before it is read from or written to."""
     if spark.catalog.tableExists(table_name):
         validate_dataframe_schema(
@@ -65,7 +74,12 @@ def validate_table_schema(table_name: str, expected_columns):
         )
 
 
-def write_table(df: DataFrame, table_name: str, expected_columns, mode="overwrite"):
+def write_table(
+    df: DataFrame,
+    table_name: str,
+    expected_columns: Mapping[str, str],
+    mode: str = "overwrite",
+) -> None:
     """Validate the output schema and write it to the Delta table."""
     validate_dataframe_schema(df, expected_columns, context=f"Ausgabe fuer '{table_name}'")
     if mode == "append":
@@ -73,7 +87,13 @@ def write_table(df: DataFrame, table_name: str, expected_columns, mode="overwrit
     df.write.format("delta").mode(mode).saveAsTable(table_name)
 
 
-def load_to_bronze(raw_df, file_name, bronze_table_name, source_schema, bronze_schema):
+def load_to_bronze(
+    raw_df: DataFrame,
+    file_name: str,
+    bronze_table_name: str,
+    source_schema: Mapping[str, str],
+    bronze_schema: Mapping[str, str],
+) -> None:
     """Validate each source file and append it to Bronze without schema evolution."""
     validate_dataframe_schema(
         raw_df,

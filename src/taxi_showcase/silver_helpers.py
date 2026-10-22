@@ -1,8 +1,9 @@
 """Pipeline helpers for Silver (checks & writes)."""
 
+from collections.abc import Mapping, Sequence
 from datetime import timedelta
 
-from pyspark.sql import SparkSession
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
     asc,
     col,
@@ -27,7 +28,7 @@ from taxi_showcase.timestamp_utils import (
 spark = SparkSession.builder.getOrCreate()
 
 
-def validate_timestamp_columns(df, ts_cols):
+def validate_timestamp_columns(df: DataFrame, ts_cols: Sequence[str]) -> None:
     """Check 1: Validiert mehrere Timestamp-Spalten und bricht bei Fehlern ab."""
     for ts_col in ts_cols:
         result = validate_timestamp_column(df, ts_col)
@@ -37,7 +38,12 @@ def validate_timestamp_columns(df, ts_cols):
             raise ValueError(f"Timestamp-Validierung fehlgeschlagen fuer {ts_col}!")
 
 
-def filter_temporal_outliers(df, ts_col, example_cols=None, dlq_reason="outlier_timestamp"):
+def filter_temporal_outliers(
+    df: DataFrame,
+    ts_col: str,
+    example_cols: Sequence[str] | None = None,
+    dlq_reason: str = "outlier_timestamp",
+) -> tuple[DataFrame, DataFrame]:
     """Check 2: Entfernt zeitliche Ausreisser."""
     percentiles = df.agg(
         percentile_approx(ts_col, [0.05, 0.95]).alias("pcts")
@@ -80,7 +86,7 @@ def filter_temporal_outliers(df, ts_col, example_cols=None, dlq_reason="outlier_
     return df_filtered, df_dlq
 
 
-def add_trip_features(df, start_col, end_col):
+def add_trip_features(df: DataFrame, start_col: str, end_col: str) -> DataFrame:
     """Fuegt abgeleitete Spalten hinzu (trip_duration_min, weekday, is_weekend)."""
     return (
         df
@@ -93,8 +99,13 @@ def add_trip_features(df, start_col, end_col):
     )
 
 
-def dedup_keep_first(df, key_cols, order_col="_ingested_at",
-                     keep="first", dlq_reason="duplicate"):
+def dedup_keep_first(
+    df: DataFrame,
+    key_cols: Sequence[str],
+    order_col: str = "_ingested_at",
+    keep: str = "first",
+    dlq_reason: str = "duplicate",
+) -> tuple[DataFrame, DataFrame]:
     """Check 4: Entfernt Duplikate je key_cols."""
     total_before = df.count()
     dup_count = (
@@ -128,7 +139,7 @@ def dedup_keep_first(df, key_cols, order_col="_ingested_at",
     return df_dedup, df_dlq_dups
 
 
-def report_null_counts(df, cols):
+def report_null_counts(df: DataFrame, cols: Sequence[str]) -> None:
     """Check 5: Null-Zaehlung fuer wichtige Spalten (Report, kein Filter)."""
     print("\u2500\u2500 Null-Check (wichtige Spalten) \u2500\u2500")
     for c in cols:
@@ -137,7 +148,11 @@ def report_null_counts(df, cols):
         print(f"  {status} {c}: {cnt} NULLs")
 
 
-def write_dlq(df_dlq, dlq_table, expected_schema):
+def write_dlq(
+    df_dlq: DataFrame,
+    dlq_table: str,
+    expected_schema: Mapping[str, str],
+) -> None:
     """Validate and write a DLQ table."""
     df_dlq = df_dlq.withColumn("_dlq_removed_at", current_timestamp())
 
@@ -153,7 +168,11 @@ def write_dlq(df_dlq, dlq_table, expected_schema):
     print(f"\u2705 {dlq_count:,} Zeilen in {dlq_table} geschrieben.")
 
 
-def write_silver(df, silver_table, expected_schema):
+def write_silver(
+    df: DataFrame,
+    silver_table: str,
+    expected_schema: Mapping[str, str],
+) -> None:
     """Validate and write a Silver table."""
     catalog = silver_table.split(".")[0]
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.silver")

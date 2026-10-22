@@ -16,6 +16,7 @@ resources:
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/weather/landing_zone.py
+            parameters: ["--catalog", "${var.catalog}"]
 
         - task_key: weather_ingress
           depends_on:
@@ -23,6 +24,7 @@ resources:
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/weather/ingress.py
+            parameters: ["--catalog", "${var.catalog}"]
 
         - task_key: weather_silver
           depends_on:
@@ -30,12 +32,14 @@ resources:
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/weather/silver.py
+            parameters: ["--catalog", "${var.catalog}"]
 
         # ── Taxi chain ──
         - task_key: taxi_landing_zone
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/taxi/landing_zone.py
+            parameters: ["--catalog", "${var.catalog}"]
 
         - task_key: taxi_ingress
           depends_on:
@@ -43,6 +47,7 @@ resources:
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/taxi/ingress.py
+            parameters: ["--catalog", "${var.catalog}"]
 
         - task_key: taxi_silver
           depends_on:
@@ -50,12 +55,14 @@ resources:
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/taxi/silver.py
+            parameters: ["--catalog", "${var.catalog}"]
 
         # ── Bike chain ──
         - task_key: bike_ingress
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/bike/ingress.py
+            parameters: ["--catalog", "${var.catalog}"]
 
         - task_key: bike_silver
           depends_on:
@@ -63,3 +70,4 @@ resources:
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/bike/silver.py
+            parameters: ["--catalog", "${var.catalog}"]

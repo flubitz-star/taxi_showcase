@@ -2,7 +2,9 @@
 
 from pyspark.sql import SparkSession
 
+from taxi_showcase.pipelines.shared.config import LandingZoneConfig
 from taxi_showcase.tracking import (
+    LandingFile,
     ensure_tracking_table,
     get_known_checksums,
     list_landing_files,
@@ -13,10 +15,12 @@ from taxi_showcase.tracking import (
 spark = SparkSession.builder.getOrCreate()
 
 
-def run_landing_zone_check(project_cfg):
+def run_landing_zone_check(
+    project_cfg: LandingZoneConfig,
+) -> tuple[list[LandingFile], list[LandingFile]]:
     """Kompletter Landing-Zone-Check fuer ein Projekt (Schritt 01)."""
-    lz_path = project_cfg["landing_zone"]
-    tracking_table = project_cfg["tracking_table"]
+    lz_path = project_cfg.landing_zone
+    tracking_table = project_cfg.tracking_table
     print(f"Landing Zone: {lz_path}")
     print(f"Tracking:     {tracking_table}\n")
     files = list_landing_files(lz_path)
@@ -27,7 +31,7 @@ def run_landing_zone_check(project_cfg):
     return new_files, dup_files
 
 
-def verify_bronze(bronze_table):
+def verify_bronze(bronze_table: str) -> None:
     """Zeigt Zeilen pro Quelldatei in einer Bronze-Tabelle (Verifikation nach dem Ingest)."""
     print(f"Uebersicht {bronze_table}:")
     spark.sql(f"""

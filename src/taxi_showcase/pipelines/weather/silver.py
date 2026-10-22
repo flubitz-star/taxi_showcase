@@ -7,7 +7,8 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, current_timestamp, date_format
 from pyspark.sql.functions import count as spark_count
 
-from taxi_showcase.pipelines.weather.config import CONFIG
+from taxi_showcase.pipelines.shared.config import parse_catalog_argument
+from taxi_showcase.pipelines.weather.config import create_config
 from taxi_showcase.schema import validate_table_schema
 from taxi_showcase.schemas.weather import BRONZE_SCHEMA, SILVER_SCHEMA
 from taxi_showcase.silver_helpers import (
@@ -24,10 +25,10 @@ from taxi_showcase.timestamp_utils import (
 spark = SparkSession.builder.getOrCreate()
 
 
-def main():
-    cfg = CONFIG
-    bronze_table = cfg["bronze_table"]
-    silver_table = cfg["silver_table"]
+def main() -> None:
+    cfg = create_config(parse_catalog_argument())
+    bronze_table = cfg.bronze_table
+    silver_table = cfg.silver_table
 
     print(f"Bronze: {bronze_table}")
     print(f"Silver: {silver_table}")

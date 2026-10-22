@@ -23,9 +23,11 @@ from pyspark.sql.functions import (
     sum as sum_,
 )
 
-from taxi_showcase.pipelines.shared.config import CATALOG, GOLD_TABLES
-from taxi_showcase.pipelines.taxi.config import CONFIG as TAXI_CONFIG
-from taxi_showcase.pipelines.weather.config import CONFIG as WEATHER_CONFIG
+from taxi_showcase.pipelines.shared.config import gold_tables, parse_catalog_argument
+from taxi_showcase.pipelines.taxi.config import create_config as create_taxi_config
+from taxi_showcase.pipelines.weather.config import (
+    create_config as create_weather_config,
+)
 from taxi_showcase.schema import validate_table_schema, write_table
 from taxi_showcase.schemas.gold import (
     DAILY_METRICS_SCHEMA,
@@ -38,14 +40,16 @@ from taxi_showcase.schemas.weather import SILVER_SCHEMA as WEATHER_SILVER_SCHEMA
 spark = SparkSession.builder.getOrCreate()
 
 
-def main():
-    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.gold")
+def main() -> None:
+    catalog = parse_catalog_argument()
+    tables = gold_tables(catalog)
+    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.gold")
 
-    taxi_silver = TAXI_CONFIG["silver_table"]
-    weather_silver = WEATHER_CONFIG["silver_table"]
-    enriched_table = GOLD_TABLES["taxi_weather_enriched"]
-    daily_table = GOLD_TABLES["daily_metrics"]
-    hourly_table = GOLD_TABLES["hourly_ridership"]
+    taxi_silver = create_taxi_config(catalog).silver_table
+    weather_silver = create_weather_config(catalog).silver_table
+    enriched_table = tables.taxi_weather_enriched
+    daily_table = tables.daily_metrics
+    hourly_table = tables.hourly_ridership
 
     print(f"Silver Taxi:    {taxi_silver}")
     print(f"Silver Weather: {weather_silver}")
@@ -119,7 +123,10 @@ def main():
     # Step 4: hourly_ridership
     hourly_ridership = (
         enriched
-        .withColumn("pickup_hour_ts", date_trunc("hour", col("tpep_pickup_datetime")))
+        .withColumn(
+            "pickup_hour_ts",
+            date_trunc("hour", col("tpep_pickup_datetime")).cast("timestamp_ntz"),
+        )
         .groupBy("pickup_hour_ts", "pickup_dayofweek", "is_weekend")
         .agg(
             count_("*").alias("trips"),

@@ -6,10 +6,12 @@ to compare usage of both transport modes depending on weather.
 
 from pyspark.sql import SparkSession
 
-from taxi_showcase.pipelines.bike.config import CONFIG as BIKE_CONFIG
-from taxi_showcase.pipelines.shared.config import CATALOG, GOLD_TABLES
-from taxi_showcase.pipelines.taxi.config import CONFIG as TAXI_CONFIG
-from taxi_showcase.pipelines.weather.config import CONFIG as WEATHER_CONFIG
+from taxi_showcase.pipelines.bike.config import create_config as create_bike_config
+from taxi_showcase.pipelines.shared.config import gold_tables, parse_catalog_argument
+from taxi_showcase.pipelines.taxi.config import create_config as create_taxi_config
+from taxi_showcase.pipelines.weather.config import (
+    create_config as create_weather_config,
+)
 from taxi_showcase.schema import validate_table_schema, write_table
 from taxi_showcase.schemas.bike import SILVER_SCHEMA as BIKE_SILVER_SCHEMA
 from taxi_showcase.schemas.gold import (
@@ -22,14 +24,16 @@ from taxi_showcase.schemas.weather import SILVER_SCHEMA as WEATHER_SILVER_SCHEMA
 spark = SparkSession.builder.getOrCreate()
 
 
-def main():
-    daily_table = GOLD_TABLES["mobility_daily_comparison"]
-    hourly_table = GOLD_TABLES["mobility_hourly_comparison"]
-    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.gold")
+def main() -> None:
+    catalog = parse_catalog_argument()
+    tables = gold_tables(catalog)
+    daily_table = tables.mobility_daily_comparison
+    hourly_table = tables.mobility_hourly_comparison
+    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.gold")
 
-    taxi_silver = TAXI_CONFIG["silver_table"]
-    bike_silver = BIKE_CONFIG["silver_table"]
-    weather_silver = WEATHER_CONFIG["silver_table"]
+    taxi_silver = create_taxi_config(catalog).silver_table
+    bike_silver = create_bike_config(catalog).silver_table
+    weather_silver = create_weather_config(catalog).silver_table
 
     validate_table_schema(taxi_silver, TAXI_SILVER_SCHEMA)
     validate_table_schema(bike_silver, BIKE_SILVER_SCHEMA)

@@ -6,11 +6,12 @@ Metadata from CSV lines 1+2 integrated as columns. Column Mapping Mode for speci
 
 import os
 
-from pyspark.sql import SparkSession
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, lit
 
 from taxi_showcase.ingest_helpers import verify_bronze
-from taxi_showcase.pipelines.weather.config import CONFIG
+from taxi_showcase.pipelines.shared.config import parse_catalog_argument
+from taxi_showcase.pipelines.weather.config import create_config
 from taxi_showcase.schema import (
     load_to_bronze,
     validate_dataframe_schema,
@@ -22,7 +23,7 @@ from taxi_showcase.tracking import get_pending_ingest_files
 spark = SparkSession.builder.getOrCreate()
 
 
-def read_open_meteo_csv(file_path):
+def read_open_meteo_csv(file_path: str) -> DataFrame:
     """
     Reads an Open-Meteo CSV file raw.
     - Metadata from lines 1+2 as additional string columns
@@ -46,10 +47,10 @@ def read_open_meteo_csv(file_path):
     return data.select(*select_exprs)
 
 
-def main():
-    cfg = CONFIG
-    tracking_table = cfg["tracking_table"]
-    bronze_table = cfg["bronze_table"]
+def main() -> None:
+    cfg = create_config(parse_catalog_argument())
+    tracking_table = cfg.tracking_table
+    bronze_table = cfg.bronze_table
 
     print(f"Bronze:   {bronze_table}")
     print(f"Tracking: {tracking_table}")
@@ -68,7 +69,7 @@ def main():
         raw_df = read_open_meteo_csv(file_info.file_path)
         validate_dataframe_schema(
             raw_df,
-            cfg["expected_columns"],
+            cfg.expected_columns,
             context=f"Quelldatei '{file_info.file_name}'",
         )
         pending_dataframes.append((file_info, raw_df))
@@ -104,7 +105,7 @@ def main():
                 df,
                 f.file_name,
                 bronze_table,
-                cfg["expected_columns"],
+                cfg.expected_columns,
                 BRONZE_SCHEMA,
             )
             total_rows += row_count

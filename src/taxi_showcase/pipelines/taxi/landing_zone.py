@@ -4,11 +4,13 @@ Lists files in the taxi landing zone, registers new files via checksum tracking.
 """
 
 from taxi_showcase.ingest_helpers import run_landing_zone_check
-from taxi_showcase.pipelines.taxi.config import CONFIG
+from taxi_showcase.pipelines.shared.config import parse_catalog_argument
+from taxi_showcase.pipelines.taxi.config import create_config
 
 
-def main():
-    new_files, dup_files = run_landing_zone_check(CONFIG)
+def main() -> None:
+    cfg = create_config(parse_catalog_argument())
+    new_files, dup_files = run_landing_zone_check(cfg)
     print(f"\nNew files: {len(new_files)}, Duplicates: {len(dup_files)}")
 
 
