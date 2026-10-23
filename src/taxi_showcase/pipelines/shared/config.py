@@ -11,6 +11,7 @@ def parse_catalog_argument() -> str:
     parser = argparse.ArgumentParser()
     parser.add_argument("--catalog", required=True)
     catalog = parser.parse_args().catalog
+    # Restrict interpolation into table and volume names to simple identifiers.
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", catalog):
         raise ValueError(
             "Catalog must be a simple Unity Catalog identifier containing "
@@ -20,10 +21,13 @@ def parse_catalog_argument() -> str:
 
 
 def landing_zone_root(catalog: str) -> str:
+    """Return the shared Unity Catalog Volume root for incoming files."""
     return f"/Volumes/{catalog}/raw_files/landing_zone"
 
 
 class LandingZoneConfig(Protocol):
+    """Minimum configuration required by the shared landing-zone check."""
+
     landing_zone: str
     tracking_table: str
 
@@ -38,6 +42,7 @@ class GoldTables:
 
 
 def gold_tables(catalog: str) -> GoldTables:
+    """Build fully qualified names for the project's Gold output tables."""
     return GoldTables(
         taxi_weather_enriched=f"{catalog}.gold.taxi_weather_enriched",
         daily_metrics=f"{catalog}.gold.daily_metrics",

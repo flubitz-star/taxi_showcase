@@ -25,6 +25,7 @@ spark = SparkSession.builder.getOrCreate()
 
 
 def main() -> None:
+    # Resolve source, target, and quarantine tables for the selected catalog.
     cfg = create_config(parse_catalog_argument())
     bronze_table = cfg.bronze_table
     silver_table = cfg.silver_table
@@ -33,6 +34,7 @@ def main() -> None:
     print(f"Bronze: {bronze_table}")
     print(f"Silver: {silver_table}")
 
+    # Reject unexpected Bronze table drift before applying transformations.
     validate_table_schema(bronze_table, BRONZE_SCHEMA)
     df_bronze = spark.table(bronze_table)
     print(f"Zeilen in Bronze: {df_bronze.count():,}")
@@ -68,6 +70,7 @@ def main() -> None:
     df_dlq_invalid = df_filtered.filter(
         col("tpep_dropoff_datetime") <= col("tpep_pickup_datetime")
     ).withColumn("_dlq_reason", lit("invalid_consistency"))
+    # Keep logically invalid trips available for investigation in the DLQ.
     df_dlq = df_dlq.unionByName(df_dlq_invalid, allowMissingColumns=True)
 
     # Add derived columns
@@ -77,7 +80,7 @@ def main() -> None:
     print("  Abgeleitete Spalten: trip_duration_min, _has_negative_fare, pickup_dayofweek, pickup_weekday, is_weekend")
     print(f"  Zeilen nach Konsistenz-Filter: {df_silver.count():,}")
 
-    # Check 4: Dedup
+    # Check 4: Keep the first trip for each business-key combination.
     dup_keys = [
         "tpep_pickup_datetime", "tpep_dropoff_datetime",
         "PULocationID", "DOLocationID", "trip_distance", "fare_amount",

@@ -26,6 +26,7 @@ spark = SparkSession.builder.getOrCreate()
 
 
 def main() -> None:
+    # Resolve the weather Bronze and Silver tables for this catalog.
     cfg = create_config(parse_catalog_argument())
     bronze_table = cfg.bronze_table
     silver_table = cfg.silver_table
@@ -38,12 +39,14 @@ def main() -> None:
     print(f"Zeilen in Bronze: {df_bronze.count():,}")
 
     # Check 1: Timestamp validation
+    # Fail early if source timestamps cannot be interpreted as local date-times.
     ts_result = validate_timestamp_column(df_bronze, "time")
     print_timestamp_report(ts_result, "time")
     if ts_result["unparseable"] > 0:
         raise ValueError("Timestamp-Validierung fehlgeschlagen \u2013 Bronze-Daten pruefen!")
 
     # Transformation: String -> typed columns
+    # Cast raw strings to analytical types and retain processing lineage.
     df_silver = (
         df_bronze
         .transform(
@@ -70,14 +73,14 @@ def main() -> None:
     df_silver = df_silver.drop(*cols_to_drop)
     print(f"\nZeilen nach Transformation: {df_silver.count():,}")
 
-    # Check 2: Dedup (keep latest per hour)
+    # Keep the most recently ingested observation when an hour is duplicated.
     df_silver, _ = dedup_keep_first(df_silver, ["ts"], order_col="_ingested_at", keep="latest")
 
-    # Check 3: Null checks
+    # Report missing weather measurements without dropping those observations.
     weather_cols = ["temperature_2m_c", "rain_mm", "snowfall_cm", "precipitation_mm", "snow_depth_m"]
     report_null_counts(df_silver, weather_cols)
 
-    # Check 4: Range validation
+    # Measure out-of-range values as quality metrics; do not filter them here.
     print("\n\u2500\u2500 Wertebereich-Check \u2500\u2500")
     range_checks = [
         ("temperature_2m_c", -50.0, 60.0, "Temperatur (\u00b0C)"),
@@ -95,7 +98,7 @@ def main() -> None:
         hi_display = hi if hi is not None else "\u221e"
         print(f"  {status} {label}: {out_of_range} Werte ausserhalb [{lo}, {hi_display}]")
 
-    # Check 5: Completeness (24 hours per day)
+    # Check that each date has the expected 24 hourly observations.
     print("\n\u2500\u2500 Vollstaendigkeit (Stunden pro Tag) \u2500\u2500")
     hours_per_day = (
         df_silver
@@ -116,7 +119,7 @@ def main() -> None:
     # Write Silver table
     write_silver(df_silver, silver_table, SILVER_SCHEMA)
 
-    # Verify
+    # Display a small ordered sample as a post-write verification.
     print("\nStichprobe (5 Zeilen):")
     spark.sql(f"""
         SELECT ts, temperature_2m_c, rain_mm, snowfall_cm,
@@ -128,4 +131,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Execute this file as the weather Silver task.
     main()

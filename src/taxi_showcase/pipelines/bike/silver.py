@@ -25,6 +25,7 @@ spark = SparkSession.builder.getOrCreate()
 
 
 def main() -> None:
+    # Resolve the catalog-specific Bronze, Silver, and DLQ table names.
     cfg = create_config(parse_catalog_argument())
     bronze_table = cfg.bronze_table
     silver_table = cfg.silver_table
@@ -33,6 +34,7 @@ def main() -> None:
     print(f"Bronze: {bronze_table}")
     print(f"Silver: {silver_table}")
 
+    # Validate the persisted source contract before reading trip records.
     validate_table_schema(bronze_table, BRONZE_SCHEMA)
     df_bronze = spark.table(bronze_table)
     print(f"Zeilen in Bronze: {df_bronze.count():,}")
@@ -40,6 +42,7 @@ def main() -> None:
     # Check 1: Timestamp validation
     validate_timestamp_columns(df_bronze, ["started_at", "ended_at"])
 
+    # Use timezone-free timestamps consistently for local ride times in Silver.
     df_bronze = (
         df_bronze
         .withColumn(
@@ -72,6 +75,7 @@ def main() -> None:
     df_dlq_invalid = df_filtered.filter(
         col("ended_at") <= col("started_at")
     ).withColumn("_dlq_reason", lit("invalid_consistency"))
+    # Preserve trips with impossible time ordering for later inspection.
     df_dlq = df_dlq.unionByName(df_dlq_invalid, allowMissingColumns=True)
 
     # Add derived columns
@@ -79,7 +83,7 @@ def main() -> None:
     print("  Abgeleitete Spalten: trip_duration_min, pickup_dayofweek, pickup_weekday, is_weekend")
     print(f"  Zeilen nach Konsistenz-Filter: {df_silver.count():,}")
 
-    # Check 4: Dedup on ride_id
+    # Check 4: Treat ride_id as the unique business key for CitiBike trips.
     df_silver, df_dlq_dups = dedup_keep_first(df_silver, ["ride_id"])
     df_dlq = df_dlq.unionByName(df_dlq_dups, allowMissingColumns=True)
 

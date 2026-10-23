@@ -2,12 +2,14 @@
 
 from taxi_showcase.pipelines.taxi.schema import EXPECTED_COLUMNS
 
+# Bronze preserves all source fields and adds file-level ingestion lineage.
 BRONZE_SCHEMA = {
     **EXPECTED_COLUMNS,
     "_source_file": "string",
     "_ingested_at": "timestamp",
 }
 
+# Silver retains Bronze data and adds derived trip features and quality flags.
 SILVER_SCHEMA = {
     **BRONZE_SCHEMA,
     "trip_duration_min": "double",
@@ -19,6 +21,7 @@ SILVER_SCHEMA = {
     "_passenger_count_imputed": "boolean",
 }
 
+# DLQ keeps rejected records with their reason and removal timestamp.
 DLQ_SCHEMA = {
     **BRONZE_SCHEMA,
     "trip_duration_min": "double",

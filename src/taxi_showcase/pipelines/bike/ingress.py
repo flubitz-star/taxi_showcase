@@ -26,22 +26,23 @@ spark = SparkSession.builder.getOrCreate()
 
 
 def main() -> None:
+    # Load pipeline-specific paths and source schema from the catalog argument.
     cfg = create_config(parse_catalog_argument())
     bronze_table = cfg.bronze_table
     lz_path = cfg.landing_zone
 
     print(f"Bronze:       {bronze_table}")
 
-    # Landing zone check & register new files
+    # Discover and register ZIP archives before checking Bronze for pending work.
     run_landing_zone_check(cfg)
 
-    # Files registered but not yet in bronze
+    # Select registered files that have not yet been loaded into Bronze.
     pending = get_pending_ingest_files(cfg.tracking_table, bronze_table)
     print(f"\nZu ladende Dateien: {len(pending)}")
     for f in pending:
         print(f"  {f.file_name}")
 
-    # Lese-Schema & CSV-Optionen from config
+    # Derive the Spark schema and CSV reader options from the pipeline contract.
     bike_csv_schema = expected_to_struct_type(cfg.expected_columns)
     csv_options = cfg.csv_options
     print(f"Lese-Schema abgeleitet: {len(bike_csv_schema.fields)} Spalten")
@@ -51,12 +52,12 @@ def main() -> None:
         zip_path = zip_info.file_path
         extract_dir = os.path.join(lz_path, "_tmp_csvs")
 
-        # Clean old extraction (UC Volume, serverless-compatible)
+        # Clear this run's extraction folder to avoid reading stale CSVs.
         if os.path.exists(extract_dir):
             shutil.rmtree(extract_dir)
         os.makedirs(extract_dir, exist_ok=True)
 
-        # Extract ZIP
+        # Extract source CSVs from the pending archive into the temporary folder.
         with zipfile.ZipFile(zip_path, "r") as zf:
             csv_names = [n for n in zf.namelist() if n.endswith(".csv")]
             zf.extractall(extract_dir)
@@ -67,6 +68,7 @@ def main() -> None:
         expected_header = list(cfg.expected_columns)
         for csv_name in csv_names:
             csv_file = os.path.join(extract_dir, csv_name)
+            # Check the real header, including order, before applying the schema.
             actual_header = spark.read.options(**csv_options).csv(csv_file).columns
             if actual_header != expected_header:
                 raise ValueError(
@@ -75,20 +77,20 @@ def main() -> None:
                     f"gefunden: {actual_header}"
                 )
 
-        # Read all CSVs (wildcard path)
+        # Read all extracted CSVs together using the explicit source schema.
         csv_path = os.path.join(extract_dir, "*.csv")
         df = spark.read.csv(csv_path, schema=bike_csv_schema, **csv_options)
         row_count = df.count()
         print(f"\nGelesen: {row_count:,} Zeilen aus {len(csv_names)} CSV-Datei(en)")
 
-        # Schema validation
+        # Confirm parsing produced exactly the expected columns and types.
         validate_dataframe_schema(
             df,
             cfg.expected_columns,
             context=f"Bike-Quelldatei '{zip_info.file_name}'",
         )
 
-        # Load into bronze
+        # Append the parsed rows and source-file metadata to Bronze.
         print(f"Lade {zip_info.file_name} ...")
         load_to_bronze(
             df,
@@ -106,4 +108,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Run the ingestion task when invoked as a Databricks Python file.
     main()

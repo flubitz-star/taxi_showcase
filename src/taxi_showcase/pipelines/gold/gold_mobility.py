@@ -25,6 +25,7 @@ spark = SparkSession.builder.getOrCreate()
 
 
 def main() -> None:
+    # Resolve table names and ensure the Gold schema exists.
     catalog = parse_catalog_argument()
     tables = gold_tables(catalog)
     daily_table = tables.mobility_daily_comparison
@@ -35,6 +36,7 @@ def main() -> None:
     bike_silver = create_bike_config(catalog).silver_table
     weather_silver = create_weather_config(catalog).silver_table
 
+    # Check each upstream table against its declared schema before querying it.
     validate_table_schema(taxi_silver, TAXI_SILVER_SCHEMA)
     validate_table_schema(bike_silver, BIKE_SILVER_SCHEMA)
     validate_table_schema(weather_silver, WEATHER_SILVER_SCHEMA)
@@ -47,7 +49,7 @@ def main() -> None:
     print(f"Bike Silver:    {df_bike.count():,} Zeilen")
     print(f"Weather Silver: {df_weather.count():,} Zeilen")
 
-    # ── Daily aggregations ──
+    # Aggregate taxi, bike, and hourly weather rows separately by calendar day.
     df_taxi_daily = spark.sql(f"""
         SELECT
             TO_DATE(tpep_pickup_datetime) AS pickup_date,
@@ -98,6 +100,8 @@ def main() -> None:
     df_bike_daily.createOrReplaceTempView("bike_daily")
     df_weather_daily.createOrReplaceTempView("weather_daily")
 
+    # Full-join taxi and bike dates so activity from either mode is retained.
+    # Weather is optional and joined to whichever mobility date is available.
     df_mobility = spark.sql("""
         SELECT
             COALESCE(t.pickup_date, b.pickup_date) AS pickup_date,
@@ -136,6 +140,7 @@ def main() -> None:
         LEFT JOIN weather_daily w ON COALESCE(t.pickup_date, b.pickup_date) = w.pickup_date
     """)
 
+    # Sort persisted daily results for predictable downstream presentation.
     print(f"Mobility Daily Zeilen: {df_mobility.count()}")
 
     print(f"Schreibe in {daily_table} ...")
@@ -147,7 +152,7 @@ def main() -> None:
     row_count = spark.table(daily_table).count()
     print(f"\u2705 {row_count:,} Zeilen in {daily_table} geschrieben.")
 
-    # ── Hourly comparison ──
+    # Aggregate taxi and bike activity by date and hour for a finer comparison.
     df_taxi_hourly = spark.sql(f"""
         SELECT
             TO_DATE(tpep_pickup_datetime) AS pickup_date,
@@ -177,6 +182,7 @@ def main() -> None:
         GROUP BY TO_DATE(started_at), HOUR(started_at)
     """)
 
+    # Weather Silver already contains one observation per timestamp/hour.
     df_weather_hourly = spark.sql(f"""
         SELECT
             TO_DATE(ts) AS pickup_date,
@@ -194,6 +200,7 @@ def main() -> None:
     df_bike_hourly.createOrReplaceTempView("bike_hourly")
     df_weather_hourly.createOrReplaceTempView("weather_hourly")
 
+    # Retain hours with either mode and attach matching weather when available.
     df_mobility_hourly = spark.sql("""
         SELECT
             COALESCE(t.pickup_date, b.pickup_date) AS pickup_date,
@@ -234,4 +241,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Execute this file as the mobility Gold task.
     main()

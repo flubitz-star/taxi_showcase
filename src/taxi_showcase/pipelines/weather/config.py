@@ -9,6 +9,8 @@ from taxi_showcase.pipelines.weather.schema import EXPECTED_COLUMNS
 
 @dataclass(frozen=True)
 class WeatherConfig:
+    """Paths, tables, and source schema used by the weather pipeline."""
+
     landing_zone: str
     tracking_table: str
     bronze_table: str
@@ -17,6 +19,7 @@ class WeatherConfig:
 
 
 def create_config(catalog: str) -> WeatherConfig:
+    """Build weather pipeline settings from the selected Unity Catalog."""
     return WeatherConfig(
         landing_zone=f"{landing_zone_root(catalog)}/weather",
         tracking_table=f"{catalog}.raw_files.weather_ingested_files",

@@ -1,5 +1,6 @@
 """Expected source columns for NYC TLC taxi trips."""
 
+# Source contract for each NYC TLC trip record (name and Spark simple type).
 EXPECTED_COLUMNS = {
     "VendorID":              "int",
     "tpep_pickup_datetime":  "timestamp_ntz",

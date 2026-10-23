@@ -41,6 +41,7 @@ spark = SparkSession.builder.getOrCreate()
 
 
 def main() -> None:
+    # Resolve Gold output names and prepare the catalog schema.
     catalog = parse_catalog_argument()
     tables = gold_tables(catalog)
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.gold")
@@ -57,10 +58,11 @@ def main() -> None:
     print(f"Gold Daily:     {daily_table}")
     print(f"Gold Hourly:    {hourly_table}")
 
+    # Verify upstream contracts before building any cross-source outputs.
     validate_table_schema(taxi_silver, TAXI_SILVER_SCHEMA)
     validate_table_schema(weather_silver, WEATHER_SILVER_SCHEMA)
 
-    # Coverage check & join
+    # Match trips to weather observations by local pickup date and hour.
     trips = spark.read.table(taxi_silver)
     weather = spark.read.table(weather_silver)
 
@@ -80,13 +82,14 @@ def main() -> None:
     print(f"Mit Wetter gematcht: {count_matched}")
     print(f"Coverage: {coverage:.4f}%")
 
+    # Avoid replacing valid Gold outputs with empty data when sources do not overlap.
     if count_matched == 0:
         print("WARNUNG: Taxi-Daten und Wetter-Daten ueberlappen nicht, kein Gold-Write!")
         return
 
     print("Gold Tabellen werden erstellt.")
 
-    # Step 2: taxi_weather_enriched
+    # Persist the trip-level result with the weather fields used for enrichment.
     enriched = (
         tw_enriched.select(
             "VendorID", "tpep_pickup_datetime", "tpep_dropoff_datetime",
@@ -101,7 +104,7 @@ def main() -> None:
     write_table(enriched, enriched_table, TAXI_WEATHER_ENRICHED_SCHEMA)
     print(f"taxi_weather_enriched geschrieben: {count_matched:,} Rows")
 
-    # Step 3: daily_metrics
+    # Aggregate enriched trips into daily operational and weather metrics.
     daily_metrics = (
         enriched
         .withColumn("trip_date", col("tpep_pickup_datetime").cast("date"))
@@ -120,7 +123,7 @@ def main() -> None:
     write_table(daily_metrics, daily_table, DAILY_METRICS_SCHEMA)
     print(f"daily_metrics geschrieben: {daily_metrics.count():,} Rows")
 
-    # Step 4: hourly_ridership
+    # Aggregate the same enriched data at pickup-hour granularity.
     hourly_ridership = (
         enriched
         .withColumn(
@@ -141,7 +144,7 @@ def main() -> None:
     write_table(hourly_ridership, hourly_table, HOURLY_RIDERSHIP_SCHEMA)
     print(f"hourly_ridership geschrieben: {hourly_ridership.count():,} Rows")
 
-    # Summary
+    # Report final row counts for all outputs written by this task.
     for name, table in [
         ("taxi_weather_enriched", enriched_table),
         ("daily_metrics", daily_table),

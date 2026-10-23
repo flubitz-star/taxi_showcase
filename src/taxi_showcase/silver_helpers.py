@@ -29,7 +29,7 @@ spark = SparkSession.builder.getOrCreate()
 
 
 def validate_timestamp_columns(df: DataFrame, ts_cols: Sequence[str]) -> None:
-    """Check 1: Validiert mehrere Timestamp-Spalten und bricht bei Fehlern ab."""
+    """Validate each timestamp column and fail when non-null values cannot parse."""
     for ts_col in ts_cols:
         result = validate_timestamp_column(df, ts_col)
         print_timestamp_report(result, ts_col)
@@ -44,7 +44,8 @@ def filter_temporal_outliers(
     example_cols: Sequence[str] | None = None,
     dlq_reason: str = "outlier_timestamp",
 ) -> tuple[DataFrame, DataFrame]:
-    """Check 2: Entfernt zeitliche Ausreisser."""
+    """Keep timestamps within the allowed range and send outliers to the DLQ."""
+    # Use source distribution to define the lower bound, with a fixed upper bound.
     percentiles = df.agg(
         percentile_approx(ts_col, [0.05, 0.95]).alias("pcts")
     ).collect()[0]["pcts"]
@@ -79,6 +80,7 @@ def filter_temporal_outliers(
     print(f"  Zeilen nach Filter: {total_after:,}")
     print(f"  Entfernt:           {total_before - total_after:,}")
 
+    # Preserve excluded rows with a reason so they can be inspected downstream.
     df_dlq = df.filter(
         (col(ts_col) < lower_bound) |
         (col(ts_col) > upper_bound)
@@ -87,7 +89,8 @@ def filter_temporal_outliers(
 
 
 def add_trip_features(df: DataFrame, start_col: str, end_col: str) -> DataFrame:
-    """Fuegt abgeleitete Spalten hinzu (trip_duration_min, weekday, is_weekend)."""
+    """Add trip duration, pickup weekday, weekend, and processing-time fields."""
+    # Spark's day-of-week convention uses 1 for Sunday and 7 for Saturday.
     return (
         df
         .withColumn("trip_duration_min",
@@ -106,7 +109,7 @@ def dedup_keep_first(
     keep: str = "first",
     dlq_reason: str = "duplicate",
 ) -> tuple[DataFrame, DataFrame]:
-    """Check 4: Entfernt Duplikate je key_cols."""
+    """Keep one ordered row per key and return the remaining copies for the DLQ."""
     total_before = df.count()
     dup_count = (
         df.groupBy(*key_cols)
@@ -124,6 +127,7 @@ def dedup_keep_first(
         empty_dlq = df.limit(0).withColumn("_dlq_reason", lit(dlq_reason))
         return df, empty_dlq
 
+    # The ordering determines which duplicate is retained; default is earliest.
     order_fn = desc if keep == "latest" else asc
     w = Window.partitionBy(*key_cols).orderBy(order_fn(order_col))
     df_with_rn = df.withColumn("_rn", row_number().over(w))
@@ -140,7 +144,7 @@ def dedup_keep_first(
 
 
 def report_null_counts(df: DataFrame, cols: Sequence[str]) -> None:
-    """Check 5: Null-Zaehlung fuer wichtige Spalten (Report, kein Filter)."""
+    """Report null counts for selected columns without filtering any rows."""
     print("\u2500\u2500 Null-Check (wichtige Spalten) \u2500\u2500")
     for c in cols:
         cnt = df.filter(isnull(col(c))).count()
@@ -154,6 +158,7 @@ def write_dlq(
     expected_schema: Mapping[str, str],
 ) -> None:
     """Validate and write a DLQ table."""
+    # Mark when rejected rows were written for later operational auditing.
     df_dlq = df_dlq.withColumn("_dlq_removed_at", current_timestamp())
 
     dlq_count = df_dlq.count()
@@ -175,6 +180,7 @@ def write_silver(
 ) -> None:
     """Validate and write a Silver table."""
     catalog = silver_table.split(".")[0]
+    # Ensure the target schema exists before saveAsTable creates the table.
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.silver")
 
     print(f"Schreibe in {silver_table} ...")

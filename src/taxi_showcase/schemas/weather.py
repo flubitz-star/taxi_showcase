@@ -2,12 +2,14 @@
 
 from taxi_showcase.pipelines.weather.schema import EXPECTED_COLUMNS
 
+# Bronze retains raw weather fields and adds ingestion lineage metadata.
 BRONZE_SCHEMA = {
     **EXPECTED_COLUMNS,
     "_source_file": "string",
     "_ingested_at": "timestamp",
 }
 
+# Silver uses analytical numeric types and a timezone-free hourly timestamp.
 SILVER_SCHEMA = {
     "latitude": "double",
     "longitude": "double",

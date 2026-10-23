@@ -31,8 +31,10 @@ def read_open_meteo_csv(file_path: str) -> DataFrame:
     - All values as string (no type casting)
     - Only data rows (timestamp pattern) are written
     """
+    # Read without a header so the three metadata/header rows remain available.
     raw = spark.read.csv(file_path, header=False)
 
+    # Open-Meteo places metadata names, metadata values, and data headers in rows 1-3.
     header_rows = raw.take(3)
     meta_names = [str(header_rows[0][i]) for i in range(len(header_rows[0]))]
     meta_values = [str(header_rows[1][i]) for i in range(len(header_rows[1]))]
@@ -40,14 +42,17 @@ def read_open_meteo_csv(file_path: str) -> DataFrame:
 
     meta_dict = dict(zip(meta_names, meta_values))
 
+    # Keep only rows whose first field begins with an ISO-format date.
     data = raw.filter(col("_c0").rlike("^\\d{4}-\\d{2}-\\d{2}"))
 
+    # Repeat file-level metadata on each observation and rename data columns.
     select_exprs = [lit(meta_dict[name]).alias(name) for name in meta_names]
     select_exprs += [col(f"_c{i}").alias(data_names[i]) for i in range(len(data_names))]
     return data.select(*select_exprs)
 
 
 def main() -> None:
+    # Resolve the catalog-specific tracking and Bronze tables.
     cfg = create_config(parse_catalog_argument())
     tracking_table = cfg.tracking_table
     bronze_table = cfg.bronze_table
@@ -55,11 +60,13 @@ def main() -> None:
     print(f"Bronze:   {bronze_table}")
     print(f"Tracking: {tracking_table}")
 
+    # Select files registered by the landing-zone step but not yet present in Bronze.
     new_files = get_pending_ingest_files(tracking_table, bronze_table)
     print(f"\nZu ladende Dateien: {len(new_files)}")
     for f in new_files:
         print(f"  {f.file_name}")
 
+    # Parse and validate every available source before starting writes.
     pending_dataframes = []
     for file_info in new_files:
         if not os.path.exists(file_info.file_path):
@@ -74,7 +81,7 @@ def main() -> None:
         )
         pending_dataframes.append((file_info, raw_df))
 
-    # Load into Bronze (with Column Mapping for special characters)
+    # Load into Bronze; column mapping supports source headers containing special characters.
     if pending_dataframes:
         if not spark.catalog.tableExists(bronze_table):
             sample_df = pending_dataframes[0][1]
@@ -92,6 +99,7 @@ def main() -> None:
             """)
             print(f"Tabelle {bronze_table} mit Column Mapping erstellt.")
 
+        # Create the first Delta table with name-based mapping for special-character columns.
         total_rows = 0
         loaded_count = 0
         for f, df in pending_dataframes:
@@ -124,4 +132,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Execute this file as the weather ingress task.
     main()

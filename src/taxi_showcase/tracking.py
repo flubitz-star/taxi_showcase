@@ -26,18 +26,20 @@ class LandingFile(TypedDict):
 
 
 def compute_md5(file_path: str) -> str:
-    """Berechnet die MD5-Checksumme einer Datei (chunked, speicherschonend)."""
+    """Calculate a file's MD5 checksum without loading it all into memory."""
     hash_md5 = hashlib.md5()
     with open(file_path, "rb") as f:
+        # Process fixed-size chunks to keep memory use bounded for large files.
         for chunk in iter(lambda: f.read(8192), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
 
 def list_landing_files(lz_path: str) -> list[LandingFile]:
-    """Listet alle Dateien in einer Landing Zone inkl. MD5-Checksumme auf."""
+    """List landing-zone files and return their paths, sizes, and checksums."""
     files = []
     for entry in dbutils.fs.ls(lz_path):
+        # Ignore subdirectories; each listed file is tracked independently.
         if not entry.isDir():
             full_path = entry.path.replace("dbfs:", "")
             file_name = os.path.basename(full_path.rstrip("/"))
@@ -54,9 +56,10 @@ def list_landing_files(lz_path: str) -> list[LandingFile]:
 
 
 def _tracking_ddl_from_schema(table_name: str) -> str:
-    """Generiert CREATE TABLE DDL aus TRACKING_SCHEMA."""
+    """Build CREATE TABLE DDL using the shared tracking schema contract."""
     cols = []
     for field in TRACKING_SCHEMA.fields:
+        # Preserve non-nullable fields in the generated table definition.
         nullable = "" if field.nullable else " NOT NULL"
         cols.append(f"  {field.name:<14} {field.dataType.simpleString()}{nullable}")
     cols_sql = ",\n".join(cols)
@@ -69,18 +72,20 @@ def _tracking_ddl_from_schema(table_name: str) -> str:
 
 
 def ensure_tracking_table(tracking_table: str) -> None:
-    """Stellt sicher, dass die Tracking-Tabelle existiert (CREATE TABLE IF NOT EXISTS)."""
+    """Create the tracking table if needed and validate its schema."""
     if not spark.catalog.tableExists(tracking_table):
         print(f"Tracking-Tabelle {tracking_table} existiert nicht \u2013 wird erstellt.")
         spark.sql(_tracking_ddl_from_schema(tracking_table))
         print(f"Tracking-Tabelle {tracking_table} erstellt.")
+    # Validate existing tables too, so incompatible metadata fails early.
     validate_table_schema(tracking_table, TRACKING_COLUMNS)
 
 
 def get_known_checksums(tracking_table: str) -> dict[str, str]:
-    """Laedt bekannte Checksums aus der Tracking-Tabelle -> {checksum: file_name}."""
+    """Return known checksums mapped to their registered file names."""
     ensure_tracking_table(tracking_table)
     df = spark.sql(f"SELECT file_name, checksum FROM {tracking_table}")
+    # Collect the small tracking metadata set for local checksum comparisons.
     known = {row.checksum: row.file_name for row in df.collect()}
     print(f"Bereits registrierte Dateien in Tracking-Tabelle: {len(known)}")
     return known
@@ -90,9 +95,10 @@ def split_new_vs_known(
     files: Sequence[LandingFile],
     known_checksums: Mapping[str, str],
 ) -> tuple[list[LandingFile], list[LandingFile]]:
-    """Trennt Dateien anhand der Checksumme in neue und bereits bekannte."""
+    """Split discovered files into unseen checksums and known duplicates."""
     new_files, duplicate_files = [], []
     for f in files:
+        # Check content rather than file name so renamed copies are deduplicated.
         if f["checksum"] in known_checksums:
             duplicate_files.append(f)
         else:
@@ -115,11 +121,12 @@ def split_new_vs_known(
 
 
 def register_new_files(new_files: Sequence[LandingFile], tracking_table: str) -> int:
-    """Traegt neue Dateien in die Tracking-Tabelle ein (append)."""
+    """Append new file metadata to the tracking table and return the count."""
     if not new_files:
         print("Keine neuen Dateien zum Registrieren.")
         return 0
 
+    # Use one registration time for every file in this batch.
     now = datetime.now()
     rows = [
         (f["file_name"], f["file_path"], f["checksum"], f["file_size"], now)
@@ -133,8 +140,9 @@ def register_new_files(new_files: Sequence[LandingFile], tracking_table: str) ->
 
 
 def get_pending_ingest_files(tracking_table: str, bronze_table: str) -> list[Row]:
-    """Dateien, die registriert, aber noch nicht in Bronze geladen wurden (LEFT ANTI JOIN)."""
+    """Return tracked files whose names have not yet appeared in Bronze."""
     if spark.catalog.tableExists(bronze_table):
+        # A left anti join excludes any file already represented in Bronze.
         return spark.sql(f"""
             SELECT t.file_name, t.file_path
             FROM {tracking_table} t
@@ -143,4 +151,5 @@ def get_pending_ingest_files(tracking_table: str, bronze_table: str) -> list[Row
         """).collect()
 
     print("\u26a0\ufe0f  Bronze-Tabelle existiert noch nicht \u2013 Erstladung, alle Dateien werden geladen.")
+    # Without Bronze history, every tracked file is pending for the initial load.
     return spark.sql(f"SELECT file_name, file_path FROM {tracking_table}").collect()

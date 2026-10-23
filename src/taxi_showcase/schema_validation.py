@@ -9,10 +9,12 @@ def validate_schema(
     context: str = "DataFrame",
 ) -> None:
     """Raise an actionable error unless columns and types match the contract."""
+    # Compare names independently of ordering; column order is not part of this contract.
     expected_names = set(expected_columns)
     actual_names = set(actual_cols)
     missing = sorted(expected_names - actual_names)
     unexpected = sorted(actual_names - expected_names)
+    # Compare types only for fields present in both actual and expected schemas.
     type_mismatches = [
         (name, expected_columns[name], actual_cols[name])
         for name in sorted(expected_names & actual_names)
@@ -20,6 +22,7 @@ def validate_schema(
     ]
 
     if missing or unexpected or type_mismatches:
+        # Report every discrepancy together to simplify correcting source changes.
         details = [f"Schema-Pruefung fehlgeschlagen fuer {context}."]
         if missing:
             details.append(f"Fehlende Spalten: {missing}")

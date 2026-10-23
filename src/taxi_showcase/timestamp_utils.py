@@ -35,7 +35,8 @@ def validate_timestamp_column(
     col_name: str,
     expected_format: str | None = None,
 ) -> TimestampValidationResult:
-    """Prueft eine Spalte auf Timestamp-Parsebarkeit."""
+    """Check whether non-null values in a column can be parsed as timestamps."""
+    # Use the supplied format when present; otherwise let Spark infer supported input.
     if expected_format:
         parsed_expr = to_timestamp(col(col_name), expected_format)
     else:
@@ -43,6 +44,7 @@ def validate_timestamp_column(
 
     df_checked = df.withColumn("_ts_check", parsed_expr)
 
+    # Keep null inputs separate from non-null values that failed parsing.
     total = df.count()
     null_cnt = df.filter(isnull(col(col_name))).count()
 
@@ -52,6 +54,7 @@ def validate_timestamp_column(
     unparseable_cnt = unparseable_df.count()
     parseable_cnt = total - null_cnt - unparseable_cnt
 
+    # Calculate the observed range only from successfully parsed values.
     valid_df = df_checked.filter(~isnull(col("_ts_check")))
     valid_count = valid_df.count()
     if valid_count > 0:
@@ -61,6 +64,7 @@ def validate_timestamp_column(
         min_ts = None
         max_ts = None
 
+    # Return a few raw examples so callers can diagnose malformed values.
     if unparseable_cnt > 0:
         samples = [str(r[col_name])
                    for r in unparseable_df.select(col_name).limit(5).collect()]
@@ -79,7 +83,7 @@ def validate_timestamp_column(
 
 
 def print_timestamp_report(result: TimestampValidationResult, col_name: str) -> None:
-    """Druckt einen formatierten Bericht fuer validate_timestamp_column()."""
+    """Print a concise report for a timestamp validation result."""
     print(f"\u2500\u2500 Timestamp-Validierung: '{col_name}' \u2500\u2500")
     print(f"  Gesamtzeilen:      {result['total_rows']:,}")
     print(f"  Parsebar:          {result['parseable']:,}")
@@ -101,10 +105,12 @@ def normalize_timestamp(
     output_col: str | None = None,
     expected_format: str | None = None,
 ) -> DataFrame:
-    """Parst eine lokale Zeitspalte zu timestamp_ntz."""
+    """Parse a local-time column into Spark's timestamp_ntz type."""
     if output_col is None:
+        # Replace the input column by default; callers may choose a separate output.
         output_col = col_name
 
+    # Keep local wall-clock values timezone-free rather than converting time zones.
     if expected_format:
         parsed = to_timestamp_ntz(col(col_name), expected_format)
     else:

@@ -23,6 +23,7 @@ spark = SparkSession.builder.getOrCreate()
 
 
 def main() -> None:
+    # Resolve the configured source and destination tables for this catalog.
     cfg = create_config(parse_catalog_argument())
     tracking_table = cfg.tracking_table
     bronze_table = cfg.bronze_table
@@ -30,6 +31,7 @@ def main() -> None:
     print(f"Bronze:   {bronze_table}")
     print(f"Tracking: {tracking_table}")
 
+    # Reconcile tracking metadata with Bronze to avoid loading the same file twice.
     new_files = get_pending_ingest_files(tracking_table, bronze_table)
     print(f"\nZu ladende Dateien: {len(new_files)}")
     for f in new_files:
@@ -41,6 +43,7 @@ def main() -> None:
     else:
         pending_dataframes = []
         for file_info in new_files:
+            # A tracked path may no longer exist; skip it with a visible warning.
             if not os.path.exists(file_info.file_path):
                 print(f"\u26a0\ufe0f  Datei nicht gefunden: {file_info.file_name}")
                 continue
@@ -53,7 +56,7 @@ def main() -> None:
             )
             pending_dataframes.append((file_info, raw_df))
 
-    # Load into Bronze
+    # Append validated source files with their filename and ingestion timestamp.
     if new_files:
         total_rows = 0
         loaded_count = 0
@@ -82,4 +85,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Execute this entry point when Databricks runs the file as a task.
     main()

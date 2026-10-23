@@ -1,5 +1,6 @@
 """Schema contracts for all Gold tables."""
 
+# Trip-level taxi records enriched with their matching hourly weather values.
 TAXI_WEATHER_ENRICHED_SCHEMA = {
     "VendorID": "int",
     "tpep_pickup_datetime": "timestamp_ntz",
@@ -25,6 +26,7 @@ TAXI_WEATHER_ENRICHED_SCHEMA = {
     "snow_depth_m": "double",
 }
 
+# Daily taxi measures with weather averages and precipitation-hour counts.
 DAILY_METRICS_SCHEMA = {
     "trip_date": "date",
     "pickup_dayofweek": "int",
@@ -40,6 +42,7 @@ DAILY_METRICS_SCHEMA = {
     "snowfall_hours": "bigint",
 }
 
+# Taxi ridership and weather metrics grouped by pickup hour.
 HOURLY_RIDERSHIP_SCHEMA = {
     "pickup_hour_ts": "timestamp_ntz",
     "pickup_dayofweek": "int",
@@ -53,6 +56,7 @@ HOURLY_RIDERSHIP_SCHEMA = {
     "rainy_trips": "bigint",
 }
 
+# Daily taxi-versus-bike measures with corresponding daily weather summaries.
 MOBILITY_DAILY_COMPARISON_SCHEMA = {
     "pickup_date": "date",
     "pickup_dayofweek": "int",
@@ -83,6 +87,7 @@ MOBILITY_DAILY_COMPARISON_SCHEMA = {
     "has_precipitation": "boolean",
 }
 
+# Hourly taxi-versus-bike measures with matching weather observations.
 MOBILITY_HOURLY_COMPARISON_SCHEMA = {
     "pickup_date": "date",
     "pickup_hour": "int",

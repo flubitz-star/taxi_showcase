@@ -9,8 +9,10 @@ from taxi_showcase.pipelines.taxi.config import create_config
 
 
 def main() -> None:
+    # Resolve the same catalog-specific settings used by downstream tasks.
     cfg = create_config(parse_catalog_argument())
     new_files, dup_files = run_landing_zone_check(cfg)
+    # The shared helper has registered new files; report this run's discovery.
     print(f"\nNew files: {len(new_files)}, Duplicates: {len(dup_files)}")
 
 

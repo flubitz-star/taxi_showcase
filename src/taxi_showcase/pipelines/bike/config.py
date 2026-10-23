@@ -9,6 +9,8 @@ from taxi_showcase.pipelines.shared.config import landing_zone_root
 
 @dataclass(frozen=True)
 class BikeConfig:
+    """Paths, tables, source schema, and CSV options for CitiBike data."""
+
     landing_zone: str
     tracking_table: str
     bronze_table: str
@@ -19,6 +21,7 @@ class BikeConfig:
 
 
 def create_config(catalog: str) -> BikeConfig:
+    """Build CitiBike pipeline settings from the selected Unity Catalog."""
     return BikeConfig(
         landing_zone=f"{landing_zone_root(catalog)}/bike",
         tracking_table=f"{catalog}.raw_files.bike_ingested_files",

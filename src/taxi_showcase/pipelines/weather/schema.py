@@ -1,5 +1,6 @@
 """Expected source columns for Open-Meteo weather data."""
 
+# Preserve Open-Meteo's original header names, including units, as raw strings.
 EXPECTED_COLUMNS = {
     "latitude":              "string",
     "longitude":             "string",

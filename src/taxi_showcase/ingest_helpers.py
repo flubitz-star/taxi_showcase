@@ -12,28 +12,38 @@ from taxi_showcase.tracking import (
     split_new_vs_known,
 )
 
+# Reuse the active Spark session for table and DataFrame operations.
 spark = SparkSession.builder.getOrCreate()
 
 
 def run_landing_zone_check(
     project_cfg: LandingZoneConfig,
 ) -> tuple[list[LandingFile], list[LandingFile]]:
-    """Kompletter Landing-Zone-Check fuer ein Projekt (Schritt 01)."""
+    """Find, deduplicate, and register files in a project's landing zone."""
+    # Read the project-specific source path and file-tracking table.
     lz_path = project_cfg.landing_zone
     tracking_table = project_cfg.tracking_table
     print(f"Landing Zone: {lz_path}")
     print(f"Tracking:     {tracking_table}\n")
+
+    # List the files currently available and make sure their tracking table exists.
     files = list_landing_files(lz_path)
     ensure_tracking_table(tracking_table)
+
+    # Compare file checksums so renamed copies of known files are also recognized.
     known = get_known_checksums(tracking_table)
     new_files, dup_files = split_new_vs_known(files, known)
+
+    # Register only new files for the following ingress step.
     register_new_files(new_files, tracking_table)
     return new_files, dup_files
 
 
 def verify_bronze(bronze_table: str) -> None:
-    """Zeigt Zeilen pro Quelldatei in einer Bronze-Tabelle (Verifikation nach dem Ingest)."""
+    """Show row counts and ingestion timestamps for each source file in Bronze."""
     print(f"Uebersicht {bronze_table}:")
+
+    # Summarize each input file to verify what was loaded and when.
     spark.sql(f"""
         SELECT _source_file,
                COUNT(*) AS row_count,
