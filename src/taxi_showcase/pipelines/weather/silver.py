@@ -18,6 +18,7 @@ from taxi_showcase.silver_helpers import (
     write_silver,
 )
 from taxi_showcase.timestamp_utils import (
+    ISO_MINUTE_FORMAT,
     normalize_timestamp,
     print_timestamp_report,
     validate_timestamp_column,
@@ -67,7 +68,9 @@ def main() -> None:
 
     # Check 1: Timestamp validation
     # Fail early if source timestamps cannot be interpreted as local date-times.
-    ts_result = validate_timestamp_column(df_bronze, "time")
+    ts_result = validate_timestamp_column(
+        df_bronze, "time", expected_format=ISO_MINUTE_FORMAT
+    )
     print_timestamp_report(ts_result, "time")
     if ts_result["unparseable"] > 0:
         raise ValueError("Timestamp-Validierung fehlgeschlagen \u2013 Bronze-Daten pruefen!")
@@ -87,6 +90,7 @@ def main() -> None:
                 df,
                 "time",
                 output_col="ts",
+                expected_format=ISO_MINUTE_FORMAT,
             )
         )
         .withColumn("temperature_2m_c",   col("temperature_2m (\u00b0C)").cast("double"))

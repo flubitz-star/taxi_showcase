@@ -3,12 +3,16 @@
 from datetime import datetime
 from typing import TypedDict
 
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import Column, DataFrame
 from pyspark.sql.functions import (
     col,
-    isnull,
-    to_timestamp,
+    lit,
     to_timestamp_ntz,
+    try_to_timestamp,
+    when,
+)
+from pyspark.sql.functions import (
+    count as _spark_count,
 )
 from pyspark.sql.functions import (
     max as _spark_max,
@@ -16,8 +20,10 @@ from pyspark.sql.functions import (
 from pyspark.sql.functions import (
     min as _spark_min,
 )
+from pyspark.sql.types import StringType
 
-spark = SparkSession.builder.getOrCreate()
+# Open-Meteo local timestamps, e.g. 2024-01-31T23:00.
+ISO_MINUTE_FORMAT = "yyyy-MM-dd'T'HH:mm"
 
 
 class TimestampValidationResult(TypedDict):
@@ -30,44 +36,49 @@ class TimestampValidationResult(TypedDict):
     unparseable_sample: list[str]
 
 
+def _try_parse(df: DataFrame, col_name: str, expected_format: str | None) -> Column:
+    """Parse to a timestamp, yielding NULL (not an error) for invalid values."""
+    column = col(col_name)
+    # Formats only apply to strings; typed timestamp columns are already valid.
+    if isinstance(df.schema[col_name].dataType, StringType) and expected_format:
+        return try_to_timestamp(column, lit(expected_format))
+    return try_to_timestamp(column)
+
+
 def validate_timestamp_column(
     df: DataFrame,
     col_name: str,
     expected_format: str | None = None,
 ) -> TimestampValidationResult:
     """Check whether non-null values in a column can be parsed as timestamps."""
-    # Use the supplied format when present; otherwise let Spark infer supported input.
-    if expected_format:
-        parsed_expr = to_timestamp(col(col_name), expected_format)
-    else:
-        parsed_expr = to_timestamp(col(col_name))
-
+    parsed_expr = _try_parse(df, col_name, expected_format)
     df_checked = df.withColumn("_ts_check", parsed_expr)
 
-    # Keep null inputs separate from non-null values that failed parsing.
-    total = df.count()
-    null_cnt = df.filter(isnull(col(col_name))).count()
-
-    unparseable_df = df_checked.filter(
-        isnull(col("_ts_check")) & ~isnull(col(col_name))
-    )
-    unparseable_cnt = unparseable_df.count()
+    # One scan computes every metric; null inputs stay separate from parse failures.
+    row = df_checked.agg(
+        _spark_count(lit(1)).alias("total"),
+        _spark_count(when(col(col_name).isNull(), 1)).alias("nulls"),
+        _spark_count(
+            when(col(col_name).isNotNull() & col("_ts_check").isNull(), 1)
+        ).alias("unparseable"),
+        _spark_min("_ts_check").alias("min_ts"),
+        _spark_max("_ts_check").alias("max_ts"),
+    ).collect()[0]
+    total = row["total"]
+    null_cnt = row["nulls"]
+    unparseable_cnt = row["unparseable"]
     parseable_cnt = total - null_cnt - unparseable_cnt
-
-    # Calculate the observed range only from successfully parsed values.
-    valid_df = df_checked.filter(~isnull(col("_ts_check")))
-    valid_count = valid_df.count()
-    if valid_count > 0:
-        min_ts = valid_df.agg(_spark_min("_ts_check")).collect()[0][0]
-        max_ts = valid_df.agg(_spark_max("_ts_check")).collect()[0][0]
-    else:
-        min_ts = None
-        max_ts = None
+    min_ts = row["min_ts"]
+    max_ts = row["max_ts"]
 
     # Return a few raw examples so callers can diagnose malformed values.
     if unparseable_cnt > 0:
-        samples = [str(r[col_name])
-                   for r in unparseable_df.select(col_name).limit(5).collect()]
+        samples = [
+            str(r[col_name])
+            for r in df_checked.filter(
+                col(col_name).isNotNull() & col("_ts_check").isNull()
+            ).select(col_name).limit(5).collect()
+        ]
     else:
         samples = []
 

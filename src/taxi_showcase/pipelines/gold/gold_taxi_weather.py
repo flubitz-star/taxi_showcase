@@ -1,7 +1,10 @@
 """Taxi Gold \u2013 Step 04: Silver \u2192 Gold (Taxi + Weather enriched).
 
 Builds 3 Gold tables: taxi_weather_enriched, daily_metrics, hourly_ridership.
-INNER JOIN Trips x Weather per pickup-hour. Coverage guard: skip write if 0 matches.
+LEFT JOIN Trips x Weather on the pickup hour, so trips without a weather
+observation are kept with NULL weather columns. Weather Silver holds one row
+per hour, so the join does not duplicate trips. Coverage guard: skip the write
+if there are no trips or no trip matches a weather observation.
 """
 
 from pyspark.sql import SparkSession
@@ -62,17 +65,17 @@ def main() -> None:
     validate_table_schema(taxi_silver, TAXI_SILVER_SCHEMA)
     validate_table_schema(weather_silver, WEATHER_SILVER_SCHEMA)
 
-    # Match trips to weather observations by local pickup date and hour.
+    # Match trips to weather observations by local pickup hour (both timestamp_ntz).
     trips = spark.read.table(taxi_silver)
     weather = spark.read.table(weather_silver)
 
-    trips_join = trips.withColumn("pickup_hour", hour(col("tpep_pickup_datetime")))
-    weather_join = weather.withColumn("weather_hour", hour(col("ts")))
-
-    tw_enriched = trips_join.join(weather_join,
-        (trips_join.pickup_hour == weather_join.weather_hour) &
-        (trips_join.tpep_pickup_datetime.cast("date") == weather_join.ts.cast("date")),
-        'left')
+    trips_join = trips.withColumn(
+        "pickup_hour_ts",
+        date_trunc("hour", col("tpep_pickup_datetime")).cast("timestamp_ntz"),
+    )
+    tw_enriched = trips_join.join(
+        weather, trips_join["pickup_hour_ts"] == weather["ts"], "left"
+    ).drop("pickup_hour_ts")
 
     count_total = trips.count()
     count_matched = tw_enriched.filter(col("ts").isNotNull()).count()
@@ -85,6 +88,10 @@ def main() -> None:
     # Avoid replacing valid Gold outputs with empty data when there are no trips.
     if count_total == 0:
         print("WARNUNG: Keine Taxi-Daten vorhanden, kein Gold-Write!")
+        return
+
+    if count_matched == 0:
+        print("WARNUNG: Kein Trip hat eine Wetter-Zuordnung, kein Gold-Write!")
         return
 
     print("Gold Tabellen werden erstellt.")

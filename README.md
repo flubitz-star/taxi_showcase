@@ -57,6 +57,12 @@ and actual columns or types; automatic Delta schema merging is disabled. To
 adopt an intentional source change, update the corresponding contract and
 transformation together.
 
+Weather Bronze and DLQ preserve the original Open-Meteo CSV headers, which
+include spaces and special characters. Their Delta tables are created with
+name-based column mapping to support those names. Weather Silver renames the
+measurements to normalized analytical columns such as `temperature_2m_c` and
+`rain_mm`.
+
 Silver event timestamps use `timestamp_ntz` consistently for local taxi, bike,
 and weather times. Bronze retains the source timestamp types; Bike timestamps
 are cast from `timestamp` to `timestamp_ntz` in Silver, while Weather strings
@@ -109,6 +115,41 @@ databricks bundle run ingest_silver --only weather_landing_zone --target dev
 databricks bundle run ingest_silver --only weather_bronze --target dev
 databricks bundle run ingest_silver --only weather_silver --target dev
 ```
+
+## Processing model and scaling
+
+Landing Zone → Bronze is incremental: only files with an unseen checksum are
+registered and appended. Silver and Gold are deliberately **full refresh**:
+each run reads the complete upstream table and overwrites its targets
+(`write_table(..., mode="overwrite")`, including the DLQ tables). This keeps
+the jobs simple and idempotent and is sufficient for a few months of data.
+
+Adding older data later (e.g. February after August is loaded) works without
+code changes: drop the Taxi and Weather files for the new period into the
+landing zone, then run `ingest_silver` and `gold`. Bronze appends the new
+files, and the full refresh recomputes Silver and Gold over all months.
+Checks to keep in mind:
+
+- The temporal outlier filter derives its lower bound from the data
+  (5th percentile − 30 days). A backfill that makes up less than ~5% of all
+  rows would be classified as outliers and moved to the DLQ; a month-sized
+  backfill is fine.
+- Weather must cover the same period, otherwise the new trips have no weather
+  match (see the coverage output of `gold_taxi_weather`).
+
+The cost of a full refresh grows with total history, not with new data. To
+scale to continuous operation:
+
+- **Incremental Silver:** process only new Bronze rows (watermark on
+  `_ingested_at` or the new `_source_file` values, not on the event time, so
+  late or historical backfills are picked up) and `MERGE` them by business
+  key (Bike `ride_id`, Weather `ts`, Taxi: all source columns).
+- **Incremental Gold:** recompute only the affected days/hours and replace
+  them with `MERGE` or `replaceWhere`.
+- **Layout:** Liquid Clustering (or partitioning) on the pickup date/hour so
+  that reads and updates touch only the relevant files.
+- **Ingestion:** Auto Loader / `COPY INTO` replaces the checksum scan, and a
+  streaming source (e.g. CitiBike real-time feed) can feed Bronze directly.
 
 ## Code quality
 
