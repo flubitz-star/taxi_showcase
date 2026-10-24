@@ -75,6 +75,8 @@ def ensure_tracking_table(tracking_table: str) -> None:
     """Create the tracking table if needed and validate its schema."""
     if not spark.catalog.tableExists(tracking_table):
         print(f"Tracking-Tabelle {tracking_table} existiert nicht \u2013 wird erstellt.")
+        catalog, schema_name = tracking_table.split(".")[:2]
+        spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema_name}")
         spark.sql(_tracking_ddl_from_schema(tracking_table))
         print(f"Tracking-Tabelle {tracking_table} erstellt.")
     # Validate existing tables too, so incompatible metadata fails early.

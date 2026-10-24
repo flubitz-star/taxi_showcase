@@ -11,8 +11,8 @@ import zipfile
 from pyspark.sql import DataFrame, SparkSession
 
 from taxi_showcase.pipelines.bike.config import BikeConfig, create_config
+from taxi_showcase.pipelines.shared.bronze import run_bronze
 from taxi_showcase.pipelines.shared.config import parse_catalog_argument
-from taxi_showcase.pipelines.shared.ingress import run_bronze_ingress
 from taxi_showcase.schema import expected_to_struct_type
 from taxi_showcase.schemas.bike import BRONZE_SCHEMA
 
@@ -58,7 +58,7 @@ def read_bike_zip(cfg: BikeConfig, zip_path: str) -> DataFrame:
 def main() -> None:
     # Load pipeline-specific paths and source schema from the catalog argument.
     cfg = create_config(parse_catalog_argument())
-    run_bronze_ingress(cfg, BRONZE_SCHEMA, lambda path: read_bike_zip(cfg, path))
+    run_bronze(cfg, BRONZE_SCHEMA, lambda path: read_bike_zip(cfg, path))
 
 
 if __name__ == "__main__":

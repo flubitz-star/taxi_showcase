@@ -6,8 +6,8 @@ Strict schema validation against the declared source contract.
 
 from pyspark.sql import SparkSession
 
+from taxi_showcase.pipelines.shared.bronze import run_bronze
 from taxi_showcase.pipelines.shared.config import parse_catalog_argument
-from taxi_showcase.pipelines.shared.ingress import run_bronze_ingress
 from taxi_showcase.pipelines.taxi.config import create_config
 from taxi_showcase.schemas.taxi import BRONZE_SCHEMA
 
@@ -17,7 +17,7 @@ spark = SparkSession.builder.getOrCreate()
 def main() -> None:
     # Resolve the configured source and destination tables for this catalog.
     cfg = create_config(parse_catalog_argument())
-    run_bronze_ingress(cfg, BRONZE_SCHEMA, spark.read.parquet)
+    run_bronze(cfg, BRONZE_SCHEMA, spark.read.parquet)
 
 
 if __name__ == "__main__":

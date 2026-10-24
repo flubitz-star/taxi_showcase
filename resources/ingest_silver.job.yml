@@ -16,19 +16,19 @@ resources:
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/weather/landing_zone.py
-            parameters: ["--catalog", "${var.catalog}"]
+            parameters: ["--catalog", "${var.catalog}", "--landing-catalog", "${var.landing_catalog}"]
 
-        - task_key: weather_ingress
+        - task_key: weather_bronze
           depends_on:
             - task_key: weather_landing_zone
           environment_key: default
           spark_python_task:
-            python_file: ../src/taxi_showcase/pipelines/weather/ingress.py
+            python_file: ../src/taxi_showcase/pipelines/weather/bronze.py
             parameters: ["--catalog", "${var.catalog}"]
 
         - task_key: weather_silver
           depends_on:
-            - task_key: weather_ingress
+            - task_key: weather_bronze
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/weather/silver.py
@@ -39,19 +39,19 @@ resources:
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/taxi/landing_zone.py
-            parameters: ["--catalog", "${var.catalog}"]
+            parameters: ["--catalog", "${var.catalog}", "--landing-catalog", "${var.landing_catalog}"]
 
-        - task_key: taxi_ingress
+        - task_key: taxi_bronze
           depends_on:
             - task_key: taxi_landing_zone
           environment_key: default
           spark_python_task:
-            python_file: ../src/taxi_showcase/pipelines/taxi/ingress.py
+            python_file: ../src/taxi_showcase/pipelines/taxi/bronze.py
             parameters: ["--catalog", "${var.catalog}"]
 
         - task_key: taxi_silver
           depends_on:
-            - task_key: taxi_ingress
+            - task_key: taxi_bronze
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/taxi/silver.py
@@ -62,19 +62,19 @@ resources:
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/bike/landing_zone.py
-            parameters: ["--catalog", "${var.catalog}"]
+            parameters: ["--catalog", "${var.catalog}", "--landing-catalog", "${var.landing_catalog}"]
 
-        - task_key: bike_ingress
+        - task_key: bike_bronze
           depends_on:
             - task_key: bike_landing_zone
           environment_key: default
           spark_python_task:
-            python_file: ../src/taxi_showcase/pipelines/bike/ingress.py
+            python_file: ../src/taxi_showcase/pipelines/bike/bronze.py
             parameters: ["--catalog", "${var.catalog}"]
 
         - task_key: bike_silver
           depends_on:
-            - task_key: bike_ingress
+            - task_key: bike_bronze
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/bike/silver.py

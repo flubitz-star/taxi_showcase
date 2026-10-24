@@ -46,8 +46,10 @@ their respective pipelines. Shared pipeline settings, metadata columns, Gold
 table names, and the tracking schema live in `pipelines/shared/`. Explicit
 contracts for tracking, Bronze, Silver, DLQ, and Gold tables live in
 `schemas/`.
-The Unity Catalog is defined once by the `catalog` variable in `databricks.yml`
-and passed to every pipeline task as a command-line argument.
+The Unity Catalog of each environment is defined by the `catalog` variable per
+target in `databricks.yml` (`taxi_dev` / `taxi_prod`) and passed to every
+pipeline task as a command-line argument. The landing zone is shared by all
+environments and lives in `landing_catalog` (default: `workspace`).
 
 Incoming files and output DataFrames are checked against these contracts, as
 are existing tables before use. Schema changes fail the job with the expected
@@ -65,8 +67,10 @@ are parsed directly as `timestamp_ntz`. Processing metadata such as
 
 Python 3.10 or newer must be installed and available as `python` on your `PATH`.
 The jobs use Databricks serverless compute and require a workspace that supports serverless jobs.
-Currently only the `dev` target is active. `databricks.yml` contains a commented
-production-target template; configure its CLI profile and catalog before enabling it.
+Targets: `dev` (catalog `taxi_dev`, default) and `prod` (catalog `taxi_prod`,
+`mode: production`). Both catalogs must exist before the first run
+(`CREATE CATALOG IF NOT EXISTS taxi_dev;`); schemas and tables are created by
+the pipelines. Deploy production with `--target prod`.
 
 ```bash
 databricks auth login --host https://dbc-b5503989-0919.cloud.databricks.com --profile DEFAULT
@@ -89,20 +93,20 @@ databricks bundle run gold --target dev
 .\run_gold.ps1
 ```
 
-The Taxi helper runs `taxi_landing_zone`, `taxi_ingress`, and `taxi_silver`
-in sequence. The Bike helper runs `bike_landing_zone`, `bike_ingress`, and
+The Taxi helper runs `taxi_landing_zone`, `taxi_bronze`, and `taxi_silver`
+in sequence. The Bike helper runs `bike_landing_zone`, `bike_bronze`, and
 `bike_silver` in sequence. The Gold helper deploys the
 bundle and runs the `gold` job, which builds `gold_taxi_weather` followed by
 `gold_mobility`. It does not run the upstream ingestion or Silver jobs, so run
 those first when their tables need to be refreshed.
 
 The Weather helper deploys the bundle and runs `weather_landing_zone`,
-`weather_ingress`, and `weather_silver` in sequence. To run an individual
+`weather_bronze`, and `weather_silver` in sequence. To run an individual
 Weather step manually, use the `ingest_silver` job with the `--only` selector:
 
 ```powershell
 databricks bundle run ingest_silver --only weather_landing_zone --target dev
-databricks bundle run ingest_silver --only weather_ingress --target dev
+databricks bundle run ingest_silver --only weather_bronze --target dev
 databricks bundle run ingest_silver --only weather_silver --target dev
 ```
 
@@ -125,9 +129,12 @@ python -m unittest discover -s tests -v
 
 ## Unity Catalog
 
-All tables use the catalog configured by `catalog` in `databricks.yml`
-(default: `workspace`):
+Tables use the environment catalog configured per target by `catalog` in
+`databricks.yml` (`taxi_dev` or `taxi_prod`):
 - `<catalog>.raw_files.*` — tracking tables
 - `<catalog>.bronze.*` — raw data
 - `<catalog>.silver.*` — cleaned data + DLQ
 - `<catalog>.gold.*` — analytics tables
+
+The landing-zone Volume `<landing_catalog>.raw_files.landing_zone`
+(default: `workspace`) is shared by dev and prod.

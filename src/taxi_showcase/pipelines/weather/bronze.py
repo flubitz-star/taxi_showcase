@@ -7,8 +7,8 @@ Metadata from CSV lines 1+2 integrated as columns. Column Mapping Mode for speci
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, lit
 
+from taxi_showcase.pipelines.shared.bronze import run_bronze
 from taxi_showcase.pipelines.shared.config import parse_catalog_argument
-from taxi_showcase.pipelines.shared.ingress import run_bronze_ingress
 from taxi_showcase.pipelines.weather.config import create_config
 from taxi_showcase.schema import expected_to_struct_type
 from taxi_showcase.schemas.weather import BRONZE_SCHEMA
@@ -49,6 +49,10 @@ def ensure_bronze_table(table_name: str) -> None:
     if spark.catalog.tableExists(table_name):
         return
 
+    # The schema does not exist yet in a fresh environment catalog.
+    catalog, schema_name = table_name.split(".")[:2]
+    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema_name}")
+
     bronze_schema = expected_to_struct_type(BRONZE_SCHEMA)
     col_defs = [
         f"`{field.name.replace('`', '``')}` {field.dataType.simpleString()}"
@@ -71,7 +75,7 @@ def main() -> None:
     cfg = create_config(parse_catalog_argument())
     # Open-Meteo headers contain spaces and special characters (e.g. temperature_2m (°C)),
     # so Bronze is created up front with name-based column mapping.
-    run_bronze_ingress(
+    run_bronze(
         cfg,
         BRONZE_SCHEMA,
         read_open_meteo_csv,
@@ -80,5 +84,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Execute this file as the weather ingress task.
+    # Execute this file as the weather bronze task.
     main()

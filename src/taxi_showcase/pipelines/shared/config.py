@@ -5,24 +5,38 @@ import re
 from dataclasses import dataclass
 from typing import Protocol
 
+DEFAULT_LANDING_CATALOG = "workspace"
 
-def parse_catalog_argument() -> str:
-    """Read the deployment's Unity Catalog name from the task arguments."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--catalog", required=True)
-    catalog = parser.parse_args().catalog
+
+def _validate_identifier(value: str) -> str:
     # Restrict interpolation into table and volume names to simple identifiers.
-    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", catalog):
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value):
         raise ValueError(
             "Catalog must be a simple Unity Catalog identifier containing "
             "letters, digits, or underscores."
         )
-    return catalog
+    return value
 
 
-def landing_zone_root(catalog: str) -> str:
+def parse_catalog_argument() -> str:
+    """Read the environment's Unity Catalog name (Bronze/Silver/Gold) from the task arguments."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--catalog", required=True)
+    args, _ = parser.parse_known_args()
+    return _validate_identifier(args.catalog)
+
+
+def parse_landing_catalog_argument() -> str:
+    """Read the catalog holding the landing-zone Volume, shared by all environments."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--landing-catalog", default=DEFAULT_LANDING_CATALOG)
+    args, _ = parser.parse_known_args()
+    return _validate_identifier(args.landing_catalog)
+
+
+def landing_zone_root(landing_catalog: str = DEFAULT_LANDING_CATALOG) -> str:
     """Return the shared Unity Catalog Volume root for incoming files."""
-    return f"/Volumes/{catalog}/raw_files/landing_zone"
+    return f"/Volumes/{landing_catalog}/raw_files/landing_zone"
 
 
 class LandingZoneConfig(Protocol):

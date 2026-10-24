@@ -34,7 +34,7 @@ def run_landing_zone_check(
     known = get_known_checksums(tracking_table)
     new_files, dup_files = split_new_vs_known(files, known)
 
-    # Register only new files for the following ingress step.
+    # Register only new files for the following Bronze step.
     register_new_files(new_files, tracking_table)
     return new_files, dup_files
 

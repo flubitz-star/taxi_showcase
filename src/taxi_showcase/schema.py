@@ -86,6 +86,9 @@ def write_table(
 ) -> None:
     """Validate the output schema and write it to the Delta table."""
     validate_dataframe_schema(df, expected_columns, context=f"Ausgabe fuer '{table_name}'")
+    # Create the target schema (e.g. bronze) on first use in a fresh catalog.
+    catalog, schema_name = table_name.split(".")[:2]
+    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema_name}")
     if mode == "append":
         # Appends must match the existing table as well as the requested contract.
         validate_table_schema(table_name, expected_columns)

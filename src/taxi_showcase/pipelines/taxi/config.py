@@ -3,7 +3,10 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from taxi_showcase.pipelines.shared.config import landing_zone_root
+from taxi_showcase.pipelines.shared.config import (
+    DEFAULT_LANDING_CATALOG,
+    landing_zone_root,
+)
 from taxi_showcase.pipelines.taxi.schema import EXPECTED_COLUMNS
 
 
@@ -19,10 +22,10 @@ class TaxiConfig:
     expected_columns: Mapping[str, str]
 
 
-def create_config(catalog: str) -> TaxiConfig:
-    """Build Taxi pipeline names from the selected Unity Catalog."""
+def create_config(catalog: str, landing_catalog: str = DEFAULT_LANDING_CATALOG) -> TaxiConfig:
+    """Build Taxi pipeline names; the landing zone lives in the shared landing catalog."""
     return TaxiConfig(
-        landing_zone=f"{landing_zone_root(catalog)}/taxi",
+        landing_zone=f"{landing_zone_root(landing_catalog)}/taxi",
         tracking_table=f"{catalog}.raw_files.taxi_ingested_files",
         bronze_table=f"{catalog}.bronze.taxi_trips_raw",
         silver_table=f"{catalog}.silver.taxi_trips",

@@ -1,7 +1,8 @@
 """Shared Landing Zone → Bronze ingestion flow for file-per-DataFrame pipelines."""
 
 import os
-from typing import Any, Callable, Mapping, Optional, Protocol
+from collections.abc import Callable, Mapping
+from typing import Any, Protocol
 
 from pyspark.sql import DataFrame
 
@@ -22,11 +23,11 @@ class BronzeIngressConfig(Protocol):
     expected_columns: Mapping[str, Any]
 
 
-def run_bronze_ingress(
+def run_bronze(
     cfg: BronzeIngressConfig,
     bronze_schema: Any,
     read_file: Callable[[str], DataFrame],
-    prepare_table: Optional[Callable[[str], None]] = None,
+    prepare_table: Callable[[str], None] | None = None,
 ) -> None:
     """Load all pending tracked files into Bronze.
 

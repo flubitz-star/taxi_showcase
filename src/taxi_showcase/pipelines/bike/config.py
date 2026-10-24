@@ -4,7 +4,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from taxi_showcase.pipelines.bike.schema import CSV_OPTIONS, EXPECTED_COLUMNS
-from taxi_showcase.pipelines.shared.config import landing_zone_root
+from taxi_showcase.pipelines.shared.config import (
+    DEFAULT_LANDING_CATALOG,
+    landing_zone_root,
+)
 
 
 @dataclass(frozen=True)
@@ -20,10 +23,10 @@ class BikeConfig:
     csv_options: Mapping[str, str | bool]
 
 
-def create_config(catalog: str) -> BikeConfig:
-    """Build CitiBike pipeline settings from the selected Unity Catalog."""
+def create_config(catalog: str, landing_catalog: str = DEFAULT_LANDING_CATALOG) -> BikeConfig:
+    """Build CitiBike settings; the landing zone lives in the shared landing catalog."""
     return BikeConfig(
-        landing_zone=f"{landing_zone_root(catalog)}/bike",
+        landing_zone=f"{landing_zone_root(landing_catalog)}/bike",
         tracking_table=f"{catalog}.raw_files.bike_ingested_files",
         bronze_table=f"{catalog}.bronze.bike_trips_raw",
         silver_table=f"{catalog}.silver.bike_trips",
