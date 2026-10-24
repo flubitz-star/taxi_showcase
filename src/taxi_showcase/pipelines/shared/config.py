@@ -48,8 +48,6 @@ class LandingZoneConfig(Protocol):
 
 @dataclass(frozen=True)
 class GoldTables:
-    taxi_weather_enriched: str
-    daily_metrics: str
     hourly_ridership: str
     mobility_daily_comparison: str
     mobility_hourly_comparison: str
@@ -58,8 +56,6 @@ class GoldTables:
 def gold_tables(catalog: str) -> GoldTables:
     """Build fully qualified names for the project's Gold output tables."""
     return GoldTables(
-        taxi_weather_enriched=f"{catalog}.gold.taxi_weather_enriched",
-        daily_metrics=f"{catalog}.gold.daily_metrics",
         hourly_ridership=f"{catalog}.gold.hourly_ridership",
         mobility_daily_comparison=f"{catalog}.gold.mobility_daily_comparison",
         mobility_hourly_comparison=f"{catalog}.gold.mobility_hourly_comparison",

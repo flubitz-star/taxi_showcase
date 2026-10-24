@@ -3,7 +3,6 @@ import unittest
 from taxi_showcase.schema_validation import validate_schema
 from taxi_showcase.schemas.bike import BRONZE_SCHEMA as BIKE_BRONZE_SCHEMA
 from taxi_showcase.schemas.bike import SILVER_SCHEMA as BIKE_SILVER_SCHEMA
-from taxi_showcase.schemas.gold import TAXI_WEATHER_ENRICHED_SCHEMA
 from taxi_showcase.schemas.taxi import SILVER_SCHEMA as TAXI_SILVER_SCHEMA
 from taxi_showcase.schemas.weather import BRONZE_SCHEMA as WEATHER_BRONZE_SCHEMA
 from taxi_showcase.schemas.weather import DLQ_SCHEMA as WEATHER_DLQ_SCHEMA
@@ -75,17 +74,6 @@ class ValidateSchemaTests(unittest.TestCase):
         )
         self.assertEqual(WEATHER_DLQ_SCHEMA["_dlq_reason"], "string")
         self.assertEqual(WEATHER_DLQ_SCHEMA["_dlq_removed_at"], "timestamp")
-
-    def test_gold_preserves_taxi_event_timestamp_type(self: "ValidateSchemaTests") -> None:
-        self.assertEqual(
-            TAXI_WEATHER_ENRICHED_SCHEMA["tpep_pickup_datetime"],
-            "timestamp_ntz",
-        )
-        self.assertEqual(
-            TAXI_WEATHER_ENRICHED_SCHEMA["tpep_dropoff_datetime"],
-            "timestamp_ntz",
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

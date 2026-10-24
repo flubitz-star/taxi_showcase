@@ -58,9 +58,13 @@ class PipelineConfigTests(unittest.TestCase):
 
     def test_gold_tables_are_attributes(self: "PipelineConfigTests") -> None:
         tables = gold_tables("analytics")
-        self.assertEqual(tables.taxi_weather_enriched, "analytics.gold.taxi_weather_enriched")
+        self.assertEqual(tables.hourly_ridership, "analytics.gold.hourly_ridership")
+        self.assertEqual(
+            tables.mobility_daily_comparison,
+            "analytics.gold.mobility_daily_comparison",
+        )
         with self.assertRaises(FrozenInstanceError):
-            tables.daily_metrics = "unexpected"
+            tables.hourly_ridership = "unexpected"
 
     def test_catalog_is_read_from_task_arguments(self: "PipelineConfigTests") -> None:
         with patch("sys.argv", ["pipeline.py", "--catalog", "analytics"]):

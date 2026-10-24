@@ -1,47 +1,5 @@
 """Schema contracts for all Gold tables."""
 
-# Trip-level taxi records enriched with their matching hourly weather values.
-TAXI_WEATHER_ENRICHED_SCHEMA = {
-    "VendorID": "int",
-    "tpep_pickup_datetime": "timestamp_ntz",
-    "tpep_dropoff_datetime": "timestamp_ntz",
-    "passenger_count": "bigint",
-    "trip_distance": "double",
-    "RatecodeID": "bigint",
-    "PULocationID": "int",
-    "DOLocationID": "int",
-    "payment_type": "bigint",
-    "fare_amount": "double",
-    "tip_amount": "double",
-    "total_amount": "double",
-    "trip_duration_min": "double",
-    "pickup_dayofweek": "int",
-    "pickup_weekday": "string",
-    "is_weekend": "boolean",
-    "ts": "timestamp_ntz",
-    "temperature_2m_c": "double",
-    "rain_mm": "double",
-    "snowfall_cm": "double",
-    "precipitation_mm": "double",
-    "snow_depth_m": "double",
-}
-
-# Daily taxi measures with weather averages and precipitation-hour counts.
-DAILY_METRICS_SCHEMA = {
-    "trip_date": "date",
-    "pickup_dayofweek": "int",
-    "pickup_weekday": "string",
-    "is_weekend": "boolean",
-    "trips": "bigint",
-    "total_revenue": "double",
-    "avg_trip_duration_min": "double",
-    "avg_passengers": "double",
-    "avg_distance_miles": "double",
-    "avg_temperature_c": "double",
-    "rain_hours": "bigint",
-    "snowfall_hours": "bigint",
-}
-
 # Taxi ridership and weather metrics grouped by pickup hour.
 HOURLY_RIDERSHIP_SCHEMA = {
     "pickup_hour_ts": "timestamp_ntz",
