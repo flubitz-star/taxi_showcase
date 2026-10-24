@@ -58,7 +58,15 @@ resources:
             parameters: ["--catalog", "${var.catalog}"]
 
         # ── Bike chain ──
+        - task_key: bike_landing_zone
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/taxi_showcase/pipelines/bike/landing_zone.py
+            parameters: ["--catalog", "${var.catalog}"]
+
         - task_key: bike_ingress
+          depends_on:
+            - task_key: bike_landing_zone
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/bike/ingress.py

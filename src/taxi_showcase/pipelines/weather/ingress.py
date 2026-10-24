@@ -4,21 +4,14 @@ Reads Open-Meteo CSV files (3-line header format) into bronze as raw strings.
 Metadata from CSV lines 1+2 integrated as columns. Column Mapping Mode for special chars.
 """
 
-import os
-
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, lit
 
-from taxi_showcase.ingest_helpers import verify_bronze
 from taxi_showcase.pipelines.shared.config import parse_catalog_argument
+from taxi_showcase.pipelines.shared.ingress import run_bronze_ingress
 from taxi_showcase.pipelines.weather.config import create_config
-from taxi_showcase.schema import (
-    load_to_bronze,
-    validate_dataframe_schema,
-    validate_table_schema,
-)
+from taxi_showcase.schema import expected_to_struct_type
 from taxi_showcase.schemas.weather import BRONZE_SCHEMA
-from taxi_showcase.tracking import get_pending_ingest_files
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -51,84 +44,39 @@ def read_open_meteo_csv(file_path: str) -> DataFrame:
     return data.select(*select_exprs)
 
 
+def ensure_bronze_table(table_name: str) -> None:
+    """Create Weather Bronze with column mapping for source headers with special characters."""
+    if spark.catalog.tableExists(table_name):
+        return
+
+    bronze_schema = expected_to_struct_type(BRONZE_SCHEMA)
+    col_defs = [
+        f"`{field.name.replace('`', '``')}` {field.dataType.simpleString()}"
+        for field in bronze_schema.fields
+    ]
+    spark.sql(f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
+            {', '.join(col_defs)}
+        ) TBLPROPERTIES (
+            'delta.columnMapping.mode' = 'name',
+            'delta.minReaderVersion'    = '2',
+            'delta.minWriterVersion'   = '5'
+        )
+    """)
+    print(f"Tabelle {table_name} mit Column Mapping erstellt.")
+
+
 def main() -> None:
     # Resolve the catalog-specific tracking and Bronze tables.
     cfg = create_config(parse_catalog_argument())
-    tracking_table = cfg.tracking_table
-    bronze_table = cfg.bronze_table
-
-    print(f"Bronze:   {bronze_table}")
-    print(f"Tracking: {tracking_table}")
-
-    # Select files registered by the landing-zone step but not yet present in Bronze.
-    new_files = get_pending_ingest_files(tracking_table, bronze_table)
-    print(f"\nZu ladende Dateien: {len(new_files)}")
-    for f in new_files:
-        print(f"  {f.file_name}")
-
-    # Parse and validate every available source before starting writes.
-    pending_dataframes = []
-    for file_info in new_files:
-        if not os.path.exists(file_info.file_path):
-            print(f"\u26a0\ufe0f  Datei nicht gefunden: {file_info.file_name}")
-            continue
-        print(f"Schema-Check gegen: {file_info.file_name}")
-        raw_df = read_open_meteo_csv(file_info.file_path)
-        validate_dataframe_schema(
-            raw_df,
-            cfg.expected_columns,
-            context=f"Quelldatei '{file_info.file_name}'",
-        )
-        pending_dataframes.append((file_info, raw_df))
-
-    # Load into Bronze; column mapping supports source headers containing special characters.
-    if pending_dataframes:
-        if not spark.catalog.tableExists(bronze_table):
-            sample_df = pending_dataframes[0][1]
-            col_defs = [f"`{f.name}` {f.dataType.simpleString()}" for f in sample_df.schema.fields]
-            col_defs.append("_source_file string")
-            col_defs.append("_ingested_at timestamp")
-            spark.sql(f"""
-                CREATE TABLE IF NOT EXISTS {bronze_table} (
-                    {', '.join(col_defs)}
-                ) TBLPROPERTIES (
-                    'delta.columnMapping.mode' = 'name',
-                    'delta.minReaderVersion'    = '2',
-                    'delta.minWriterVersion'   = '5'
-                )
-            """)
-            print(f"Tabelle {bronze_table} mit Column Mapping erstellt.")
-
-        # Create the first Delta table with name-based mapping for special-character columns.
-        total_rows = 0
-        loaded_count = 0
-        for f, df in pending_dataframes:
-            if not os.path.exists(f.file_path):
-                print(f"\u26a0\ufe0f  Datei nicht gefunden, \u00fcberspringe: {f.file_name}")
-                continue
-
-            print(f"Lade {f.file_name} ...")
-            row_count = df.count()
-            load_to_bronze(
-                df,
-                f.file_name,
-                bronze_table,
-                cfg.expected_columns,
-                BRONZE_SCHEMA,
-            )
-            total_rows += row_count
-            loaded_count += 1
-            print(f"  -> {row_count:,} Zeilen geladen")
-
-        if loaded_count > 0:
-            print(f"\nIngest abgeschlossen: {loaded_count} Datei(en), {total_rows:,} Zeilen in {bronze_table} geladen.")
-        else:
-            print("\nKeine Dateien geladen.")
-    else:
-        print("Keine neuen Dateien zum Laden. Bronze ist bereits aktuell.")
-        validate_table_schema(bronze_table, BRONZE_SCHEMA)
-
-    verify_bronze(bronze_table)
+    # Open-Meteo headers contain spaces and special characters (e.g. temperature_2m (°C)),
+    # so Bronze is created up front with name-based column mapping.
+    run_bronze_ingress(
+        cfg,
+        BRONZE_SCHEMA,
+        read_open_meteo_csv,
+        prepare_table=ensure_bronze_table,
+    )
 
 
 if __name__ == "__main__":

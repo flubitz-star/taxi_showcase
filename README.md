@@ -69,6 +69,7 @@ Currently only the `dev` target is active. `databricks.yml` contains a commented
 production-target template; configure its CLI profile and catalog before enabling it.
 
 ```bash
+databricks auth login --host https://dbc-b5503989-0919.cloud.databricks.com --profile DEFAULT
 # Validate
 databricks bundle validate --target dev
 
@@ -89,8 +90,8 @@ databricks bundle run gold --target dev
 ```
 
 The Taxi helper runs `taxi_landing_zone`, `taxi_ingress`, and `taxi_silver`
-in sequence. The Bike helper runs `bike_ingress` and `bike_silver`; bike ingress
-checks and registers its landing-zone files itself. The Gold helper deploys the
+in sequence. The Bike helper runs `bike_landing_zone`, `bike_ingress`, and
+`bike_silver` in sequence. The Gold helper deploys the
 bundle and runs the `gold` job, which builds `gold_taxi_weather` followed by
 `gold_mobility`. It does not run the upstream ingestion or Silver jobs, so run
 those first when their tables need to be refreshed.

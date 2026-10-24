@@ -15,7 +15,7 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-databricks bundle run ingest_silver --only weather_silver --target dev
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
-}
+# databricks bundle run ingest_silver --only weather_silver --target dev
+# if ($LASTEXITCODE -ne 0) {
+#     exit $LASTEXITCODE
+# }
