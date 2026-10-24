@@ -1,7 +1,7 @@
 resources:
   jobs:
     gold:
-      name: "Gold Pipeline (Taxi x Weather + Mobility)"
+      name: "Gold Pipeline (Taxi x Weather + Mobility + Zone Revenue)"
 
       environments:
         - environment_key: default
@@ -23,4 +23,10 @@ resources:
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/gold/gold_mobility.py
+            parameters: ["--catalog", "${var.catalog}"]
+
+        - task_key: gold_zone_revenue
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/taxi_showcase/pipelines/gold/gold_zone_revenue.py
             parameters: ["--catalog", "${var.catalog}"]

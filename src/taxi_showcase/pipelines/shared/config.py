@@ -51,6 +51,7 @@ class GoldTables:
     hourly_ridership: str
     mobility_daily_comparison: str
     mobility_hourly_comparison: str
+    zone_revenue_hourly: str
 
 
 def gold_tables(catalog: str) -> GoldTables:
@@ -59,4 +60,5 @@ def gold_tables(catalog: str) -> GoldTables:
         hourly_ridership=f"{catalog}.gold.hourly_ridership",
         mobility_daily_comparison=f"{catalog}.gold.mobility_daily_comparison",
         mobility_hourly_comparison=f"{catalog}.gold.mobility_hourly_comparison",
+        zone_revenue_hourly=f"{catalog}.gold.zone_revenue_hourly",
     )

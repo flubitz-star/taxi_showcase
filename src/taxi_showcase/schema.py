@@ -1,6 +1,6 @@
 """Schema validation and strict table writes."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import current_timestamp, lit
@@ -83,16 +83,32 @@ def write_table(
     table_name: str,
     expected_columns: Mapping[str, str],
     mode: str = "overwrite",
+    partition_by: Sequence[str] | None = None,
 ) -> None:
     """Validate the output schema and write it to the Delta table."""
     validate_dataframe_schema(df, expected_columns, context=f"Ausgabe fuer '{table_name}'")
+    if partition_by:
+        missing_partition_columns = set(partition_by) - set(df.columns)
+        if missing_partition_columns:
+            raise ValueError(
+                f"Partitionierung fuer '{table_name}' verweist auf fehlende "
+                f"Spalten: {sorted(missing_partition_columns)}"
+            )
+        if mode != "overwrite":
+            raise ValueError(
+                "Partitionierte Tabellen koennen nur im overwrite-Modus "
+                "geschrieben werden."
+            )
     # Create the target schema (e.g. bronze) on first use in a fresh catalog.
     catalog, schema_name = table_name.split(".")[:2]
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema_name}")
     if mode == "append":
         # Appends must match the existing table as well as the requested contract.
         validate_table_schema(table_name, expected_columns)
-    df.write.format("delta").mode(mode).saveAsTable(table_name)
+    writer = df.write.format("delta").mode(mode)
+    if partition_by:
+        writer = writer.option("overwriteSchema", "true").partitionBy(*partition_by)
+    writer.saveAsTable(table_name)
 
 
 def load_to_bronze(

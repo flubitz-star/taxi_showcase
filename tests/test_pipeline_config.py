@@ -9,6 +9,7 @@ from taxi_showcase.pipelines.shared.config import (
     parse_landing_catalog_argument,
 )
 from taxi_showcase.pipelines.taxi.config import create_config as create_taxi_config
+from taxi_showcase.pipelines.taxi.zone_lookup import ZONE_LOOKUP
 from taxi_showcase.pipelines.weather.config import (
     create_config as create_weather_config,
 )
@@ -63,8 +64,18 @@ class PipelineConfigTests(unittest.TestCase):
             tables.mobility_daily_comparison,
             "analytics.gold.mobility_daily_comparison",
         )
+        self.assertEqual(
+            tables.zone_revenue_hourly,
+            "analytics.gold.zone_revenue_hourly",
+        )
         with self.assertRaises(FrozenInstanceError):
             tables.hourly_ridership = "unexpected"
+
+    def test_taxi_zone_lookup_contains_unique_location_ids(self: "PipelineConfigTests") -> None:
+        self.assertEqual(len(ZONE_LOOKUP), 265)
+        self.assertEqual(ZONE_LOOKUP[132], ("Queens", "JFK Airport", "Airports"))
+        self.assertEqual(ZONE_LOOKUP[138], ("Queens", "LaGuardia Airport", "Airports"))
+        self.assertEqual(ZONE_LOOKUP[264], ("Unknown", "N/A", "N/A"))
 
     def test_catalog_is_read_from_task_arguments(self: "PipelineConfigTests") -> None:
         with patch("sys.argv", ["pipeline.py", "--catalog", "analytics"]):

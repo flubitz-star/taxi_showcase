@@ -67,3 +67,21 @@ MOBILITY_HOURLY_COMPARISON_SCHEMA = {
     "has_rain": "boolean",
     "has_precipitation": "boolean",
 }
+
+# Taxi revenue and trip metrics grouped by pickup zone, date, and hour.
+ZONE_REVENUE_HOURLY_SCHEMA = {
+    "pickup_date": "date",
+    "pickup_hour": "int",
+    "pickup_dayofweek": "int",
+    "pickup_weekday": "string",
+    "is_weekend": "boolean",
+    "pu_location_id": "int",
+    "pu_zone": "string",
+    "pu_borough": "string",
+    "trips": "bigint",
+    "total_revenue": "double",
+    "avg_fare": "double",
+    "avg_tip": "double",
+    "avg_trip_distance": "double",
+    "avg_trip_duration_min": "double",
+}

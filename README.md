@@ -4,14 +4,106 @@ NYC Taxi, Weather & CitiBike Medallion Pipeline – Databricks DABs Project.
 
 ## Architecture
 
-```
-Landing Zone (UC Volume) → Bronze (Delta) → Silver (Delta) → Gold (Delta)
+```mermaid
+flowchart LR
+    subgraph Sources["Datenquellen"]
+        taxiSrc["NYC TLC<br/>Yellow Taxi · Parquet"]
+        weatherSrc["Open-Meteo<br/>Historical Weather · CSV"]
+        bikeSrc["CitiBike<br/>Trip Data · ZIP/CSV"]
+    end
+
+    subgraph Landing["Gemeinsame Landing Zone<br/>Unity Catalog Volume"]
+        taxiFiles["/taxi"]
+        weatherFiles["/weather"]
+        bikeFiles["/bike"]
+    end
+
+    subgraph Ingest["Databricks Job: ingest_silver"]
+        taxiLz["Taxi<br/>Landing-Zone-Scan"]
+        weatherLz["Weather<br/>Landing-Zone-Scan"]
+        bikeLz["Bike<br/>Landing-Zone-Scan"]
+        taxiBronze["Taxi Bronze"]
+        weatherBronze["Weather Bronze"]
+        bikeBronze["Bike Bronze"]
+        taxiSilver["Taxi Silver"]
+        weatherSilver["Weather Silver"]
+        bikeSilver["Bike Silver"]
+        taxiDlq["Taxi DLQ"]
+        weatherDlq["Weather DLQ"]
+        bikeDlq["Bike DLQ"]
+    end
+
+    subgraph Catalog["Unity Catalog · Umgebungskatalog (dev/prod)"]
+        tracking["raw_files<br/>Checksum-Tracking"]
+        bronzeTables["bronze<br/>Rohdaten als Delta"]
+        silverTables["silver<br/>Bereinigte Delta-Tabellen"]
+        dlqTables["silver<br/>Dead-Letter-Tabellen"]
+        hourly["gold.hourly_ridership"]
+        mobilityDaily["gold.mobility_daily_comparison"]
+        mobilityHourly["gold.mobility_hourly_comparison"]
+        zoneRevenue["gold.zone_revenue_hourly"]
+    end
+
+    subgraph GoldJob["Databricks Job: gold"]
+        taxiWeather["gold_taxi_weather"]
+        mobility["gold_mobility"]
+        zoneGold["gold_zone_revenue"]
+    end
+
+    taxiSrc --> taxiFiles --> taxiLz
+    weatherSrc --> weatherFiles --> weatherLz
+    bikeSrc --> bikeFiles --> bikeLz
+
+    taxiLz --> taxiBronze --> taxiSilver
+    weatherLz --> weatherBronze --> weatherSilver
+    bikeLz --> bikeBronze --> bikeSilver
+
+    taxiLz -. "neue Dateien registrieren" .-> tracking
+    weatherLz -. "neue Dateien registrieren" .-> tracking
+    bikeLz -. "neue Dateien registrieren" .-> tracking
+    tracking -. "Checksum/Deduplizierung" .-> taxiBronze
+    tracking -. "Checksum/Deduplizierung" .-> weatherBronze
+    tracking -. "Checksum/Deduplizierung" .-> bikeBronze
+
+    taxiBronze --> bronzeTables
+    weatherBronze --> bronzeTables
+    bikeBronze --> bronzeTables
+    taxiSilver --> silverTables
+    weatherSilver --> silverTables
+    bikeSilver --> silverTables
+    taxiSilver --> taxiDlq
+    weatherSilver --> weatherDlq
+    bikeSilver --> bikeDlq
+    taxiDlq --> dlqTables
+    weatherDlq --> dlqTables
+    bikeDlq --> dlqTables
+
+    taxiSilver --> taxiWeather
+    taxiSilver --> zoneGold
+    weatherSilver --> taxiWeather
+    taxiWeather -. "Task-Reihenfolge" .-> mobility
+    taxiSilver --> mobility
+    bikeSilver --> mobility
+    weatherSilver --> mobility
+    taxiWeather --> hourly
+    mobility --> mobilityDaily
+    mobility --> mobilityHourly
+    zoneGold --> zoneRevenue
 ```
 
-Three data sources:
-- **Taxi**: NYC TLC Yellow Trip Records (Parquet)
-- **Weather**: Open-Meteo Historical Weather (CSV)
-- **Bike**: CitiBike Trip Data (ZIP/CSV)
+`ingest_silver` führt die drei Quellketten unabhängig voneinander aus. Die
+Landing-Zone-Schritte registrieren neue Dateien anhand ihrer Prüfsumme; Bronze
+lädt anschließend nur noch nicht verarbeitete Dateien. Silver validiert und
+bereinigt die Rohdaten und schreibt nicht verwendbare Datensätze in die
+jeweilige DLQ-Tabelle. `gold` baut zuerst `hourly_ridership` aus Taxi und
+Weather, danach die täglichen/stündlichen Mobilitätsvergleiche aus Taxi, Bike
+und Weather sowie `zone_revenue_hourly` aus Taxi Silver und einer statischen
+LocationID-Map.
+
+Der Landing-Zone-Volume-Katalog ist zwischen Umgebungen geteilt
+(`landing_catalog`, Standard `workspace`). Tracking-, Bronze-, Silver-, DLQ-
+und Gold-Tabellen liegen dagegen im Umgebungskatalog (`catalog`: `taxi_dev`
+oder `taxi_prod`).
 
 ## Structure
 
@@ -38,6 +130,7 @@ taxi_showcase/
         ├── gold/            # Gold-layer analytics pipelines
         ├── weather/         # Pipeline scripts, config.py, and schema.py
         ├── taxi/            # Pipeline scripts, config.py, and schema.py
+        │   └── zone_lookup.py  # Static TLC LocationID-to-zone map
         └── bike/            # Pipeline scripts, config.py, and schema.py
 ```
 
@@ -103,8 +196,8 @@ The Taxi helper runs `taxi_landing_zone`, `taxi_bronze`, and `taxi_silver`
 in sequence. The Bike helper runs `bike_landing_zone`, `bike_bronze`, and
 `bike_silver` in sequence. The Gold helper deploys the
 bundle and runs the `gold` job, which builds `gold_taxi_weather` followed by
-`gold_mobility`. It does not run the upstream ingestion or Silver jobs, so run
-those first when their tables need to be refreshed.
+`gold_mobility` and `gold_zone_revenue`. It does not run the upstream ingestion
+or Silver jobs, so run those first when their tables need to be refreshed.
 
 The Weather helper deploys the bundle and runs `weather_landing_zone`,
 `weather_bronze`, and `weather_silver` in sequence. To run an individual
@@ -115,6 +208,14 @@ databricks bundle run ingest_silver --only weather_landing_zone --target dev
 databricks bundle run ingest_silver --only weather_bronze --target dev
 databricks bundle run ingest_silver --only weather_silver --target dev
 ```
+
+The static NYC TLC LocationID map in `pipelines/taxi/zone_lookup.py` was
+generated from `taxi_zone_lookup.csv` and includes Borough, Zone, and
+service_zone for IDs 1–265. The `gold_zone_revenue` task reads
+`<catalog>.silver.taxi_trips` only, enriches `PULocationID` from this map, and
+does not depend on Weather or another Gold table. It filters out rows without a
+pickup location or with non-positive `total_amount`, then writes
+`<catalog>.gold.zone_revenue_hourly`, partitioned by `pickup_date`.
 
 ## Processing model and scaling
 
