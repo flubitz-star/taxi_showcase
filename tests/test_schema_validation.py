@@ -5,6 +5,8 @@ from taxi_showcase.schemas.bike import BRONZE_SCHEMA as BIKE_BRONZE_SCHEMA
 from taxi_showcase.schemas.bike import SILVER_SCHEMA as BIKE_SILVER_SCHEMA
 from taxi_showcase.schemas.gold import TAXI_WEATHER_ENRICHED_SCHEMA
 from taxi_showcase.schemas.taxi import SILVER_SCHEMA as TAXI_SILVER_SCHEMA
+from taxi_showcase.schemas.weather import BRONZE_SCHEMA as WEATHER_BRONZE_SCHEMA
+from taxi_showcase.schemas.weather import DLQ_SCHEMA as WEATHER_DLQ_SCHEMA
 from taxi_showcase.schemas.weather import SILVER_SCHEMA as WEATHER_SILVER_SCHEMA
 
 
@@ -65,6 +67,14 @@ class ValidateSchemaTests(unittest.TestCase):
         self.assertEqual(BIKE_BRONZE_SCHEMA["started_at"], "timestamp")
         self.assertEqual(BIKE_BRONZE_SCHEMA["ended_at"], "timestamp")
         self.assertEqual(WEATHER_SILVER_SCHEMA["ts"], "timestamp_ntz")
+
+    def test_weather_dlq_keeps_bronze_fields_and_quarantine_metadata(self: "ValidateSchemaTests") -> None:
+        self.assertEqual(
+            {name: WEATHER_DLQ_SCHEMA[name] for name in WEATHER_BRONZE_SCHEMA},
+            WEATHER_BRONZE_SCHEMA,
+        )
+        self.assertEqual(WEATHER_DLQ_SCHEMA["_dlq_reason"], "string")
+        self.assertEqual(WEATHER_DLQ_SCHEMA["_dlq_removed_at"], "timestamp")
 
     def test_gold_preserves_taxi_event_timestamp_type(self: "ValidateSchemaTests") -> None:
         self.assertEqual(

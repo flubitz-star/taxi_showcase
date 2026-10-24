@@ -80,18 +80,29 @@ def main() -> None:
         GROUP BY TO_DATE(started_at)
     """)
 
+    # Only publish daily weather metrics when all 24 hours and values are present.
     df_weather_daily = spark.sql(f"""
         SELECT
             TO_DATE(ts) AS pickup_date,
-            ROUND(AVG(temperature_2m_c), 1) AS avg_temp_c,
-            ROUND(MAX(temperature_2m_c), 1) AS max_temp_c,
-            ROUND(MIN(temperature_2m_c), 1) AS min_temp_c,
-            ROUND(SUM(rain_mm), 2) AS total_rain_mm,
-            ROUND(SUM(precipitation_mm), 2) AS total_precipitation_mm,
-            ROUND(SUM(snowfall_cm), 2) AS total_snowfall_cm,
-            SUM(CASE WHEN rain_mm > 0 THEN 1 ELSE 0 END) AS hours_rain,
-            SUM(CASE WHEN precipitation_mm > 0 THEN 1 ELSE 0 END) AS hours_precipitation,
-            SUM(CASE WHEN temperature_2m_c < 0 THEN 1 ELSE 0 END) AS hours_freezing
+            COUNT(*) AS weather_hours,
+            CASE WHEN COUNT(*) = 24 AND COUNT(temperature_2m_c) = 24
+                THEN ROUND(AVG(temperature_2m_c), 1) END AS avg_temp_c,
+            CASE WHEN COUNT(*) = 24 AND COUNT(temperature_2m_c) = 24
+                THEN ROUND(MAX(temperature_2m_c), 1) END AS max_temp_c,
+            CASE WHEN COUNT(*) = 24 AND COUNT(temperature_2m_c) = 24
+                THEN ROUND(MIN(temperature_2m_c), 1) END AS min_temp_c,
+            CASE WHEN COUNT(*) = 24 AND COUNT(rain_mm) = 24
+                THEN ROUND(SUM(rain_mm), 2) END AS total_rain_mm,
+            CASE WHEN COUNT(*) = 24 AND COUNT(precipitation_mm) = 24
+                THEN ROUND(SUM(precipitation_mm), 2) END AS total_precipitation_mm,
+            CASE WHEN COUNT(*) = 24 AND COUNT(snowfall_cm) = 24
+                THEN ROUND(SUM(snowfall_cm), 2) END AS total_snowfall_cm,
+            CASE WHEN COUNT(*) = 24 AND COUNT(rain_mm) = 24
+                THEN SUM(CASE WHEN rain_mm > 0 THEN 1 ELSE 0 END) END AS hours_rain,
+            CASE WHEN COUNT(*) = 24 AND COUNT(precipitation_mm) = 24
+                THEN SUM(CASE WHEN precipitation_mm > 0 THEN 1 ELSE 0 END) END AS hours_precipitation,
+            CASE WHEN COUNT(*) = 24 AND COUNT(temperature_2m_c) = 24
+                THEN SUM(CASE WHEN temperature_2m_c < 0 THEN 1 ELSE 0 END) END AS hours_freezing
         FROM {weather_silver}
         GROUP BY TO_DATE(ts)
     """)
@@ -118,6 +129,7 @@ def main() -> None:
             b.bike_casual_trips,
             b.bike_electric_trips,
             b.bike_classic_trips,
+            w.weather_hours,
             w.avg_temp_c,
             w.max_temp_c,
             w.min_temp_c,
@@ -133,8 +145,9 @@ def main() -> None:
                 THEN ROUND(COALESCE(b.bike_trips, 0) / (COALESCE(t.taxi_trips, 0) + COALESCE(b.bike_trips, 0)) * 100, 1)
                 ELSE 0.0
             END AS bike_share_pct,
-            CASE WHEN COALESCE(w.total_rain_mm, 0) > 0 THEN true ELSE false END AS has_rain,
-            CASE WHEN COALESCE(w.total_precipitation_mm, 0) > 0 THEN true ELSE false END AS has_precipitation
+            CASE WHEN w.total_rain_mm IS NOT NULL THEN w.total_rain_mm > 0 END AS has_rain,
+            CASE WHEN w.total_precipitation_mm IS NOT NULL
+                THEN w.total_precipitation_mm > 0 END AS has_precipitation
         FROM taxi_daily t
         FULL OUTER JOIN bike_daily b ON t.pickup_date = b.pickup_date
         LEFT JOIN weather_daily w ON COALESCE(t.pickup_date, b.pickup_date) = w.pickup_date
@@ -191,8 +204,9 @@ def main() -> None:
             rain_mm,
             precipitation_mm,
             snowfall_cm,
-            CASE WHEN rain_mm > 0 THEN true ELSE false END AS has_rain,
-            CASE WHEN precipitation_mm > 0 THEN true ELSE false END AS has_precipitation
+            CASE WHEN rain_mm IS NOT NULL THEN rain_mm > 0 END AS has_rain,
+            CASE WHEN precipitation_mm IS NOT NULL
+                THEN precipitation_mm > 0 END AS has_precipitation
         FROM {weather_silver}
     """)
 
@@ -200,7 +214,7 @@ def main() -> None:
     df_bike_hourly.createOrReplaceTempView("bike_hourly")
     df_weather_hourly.createOrReplaceTempView("weather_hourly")
 
-    # Retain hours with either mode and attach matching weather when available.
+    # Retain hours with either mode; NULL weather flags mean no usable measurement.
     df_mobility_hourly = spark.sql("""
         SELECT
             COALESCE(t.pickup_date, b.pickup_date) AS pickup_date,

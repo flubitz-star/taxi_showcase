@@ -72,19 +72,19 @@ def main() -> None:
     tw_enriched = trips_join.join(weather_join,
         (trips_join.pickup_hour == weather_join.weather_hour) &
         (trips_join.tpep_pickup_datetime.cast("date") == weather_join.ts.cast("date")),
-        'inner')
+        'left')
 
     count_total = trips.count()
-    count_matched = tw_enriched.count()
+    count_matched = tw_enriched.filter(col("ts").isNotNull()).count()
     coverage = 100.0 * count_matched / (count_total if count_total > 0 else 1)
 
     print(f"Gesamt Trips: {count_total}")
     print(f"Mit Wetter gematcht: {count_matched}")
     print(f"Coverage: {coverage:.4f}%")
 
-    # Avoid replacing valid Gold outputs with empty data when sources do not overlap.
-    if count_matched == 0:
-        print("WARNUNG: Taxi-Daten und Wetter-Daten ueberlappen nicht, kein Gold-Write!")
+    # Avoid replacing valid Gold outputs with empty data when there are no trips.
+    if count_total == 0:
+        print("WARNUNG: Keine Taxi-Daten vorhanden, kein Gold-Write!")
         return
 
     print("Gold Tabellen werden erstellt.")
@@ -102,11 +102,11 @@ def main() -> None:
         )
     )
     write_table(enriched, enriched_table, TAXI_WEATHER_ENRICHED_SCHEMA)
-    print(f"taxi_weather_enriched geschrieben: {count_matched:,} Rows")
+    print(f"taxi_weather_enriched geschrieben: {count_total:,} Rows")
 
-    # Aggregate enriched trips into daily operational and weather metrics.
-    daily_metrics = (
-        enriched
+    # Aggregate all taxi trips independently of weather coverage.
+    daily_taxi_metrics = (
+        trips
         .withColumn("trip_date", col("tpep_pickup_datetime").cast("date"))
         .groupBy("trip_date", "pickup_dayofweek", "pickup_weekday", "is_weekend")
         .agg(
@@ -115,9 +115,26 @@ def main() -> None:
             round_(avg("trip_duration_min"), 2).alias("avg_trip_duration_min"),
             round_(avg("passenger_count"), 2).alias("avg_passengers"),
             round_(avg("trip_distance"), 2).alias("avg_distance_miles"),
+        )
+    )
+
+    # Aggregate weather once per observed hour, not once per matching trip.
+    daily_weather_metrics = (
+        weather
+        .groupBy(col("ts").cast("date").alias("trip_date"))
+        .agg(
             round_(avg("temperature_2m_c"), 2).alias("avg_temperature_c"),
-            countDistinct(when(col("rain_mm") > 0, hour(col("tpep_pickup_datetime")))).alias("rain_hours"),
-            countDistinct(when(col("snowfall_cm") > 0, hour(col("tpep_pickup_datetime")))).alias("snowfall_hours"),
+            countDistinct(when(col("rain_mm") > 0, hour(col("ts")))).alias("rain_hours"),
+            countDistinct(when(col("snowfall_cm") > 0, hour(col("ts")))).alias("snowfall_hours"),
+        )
+    )
+    daily_metrics = (
+        daily_taxi_metrics
+        .join(daily_weather_metrics, on="trip_date", how="left")
+        .select(
+            "trip_date", "pickup_dayofweek", "pickup_weekday", "is_weekend",
+            "trips", "total_revenue", "avg_trip_duration_min", "avg_passengers",
+            "avg_distance_miles", "avg_temperature_c", "rain_hours", "snowfall_hours",
         )
     )
     write_table(daily_metrics, daily_table, DAILY_METRICS_SCHEMA)

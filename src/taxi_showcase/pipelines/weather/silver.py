@@ -4,16 +4,17 @@ Type casting, dedup, null checks, range validation, completeness check.
 """
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, current_timestamp, date_format
+from pyspark.sql.functions import col, current_timestamp, date_format, lit
 from pyspark.sql.functions import count as spark_count
 
 from taxi_showcase.pipelines.shared.config import parse_catalog_argument
 from taxi_showcase.pipelines.weather.config import create_config
-from taxi_showcase.schema import validate_table_schema
-from taxi_showcase.schemas.weather import BRONZE_SCHEMA, SILVER_SCHEMA
+from taxi_showcase.schema import expected_to_struct_type, validate_table_schema
+from taxi_showcase.schemas.weather import BRONZE_SCHEMA, DLQ_SCHEMA, SILVER_SCHEMA
 from taxi_showcase.silver_helpers import (
     dedup_keep_first,
     report_null_counts,
+    write_dlq,
     write_silver,
 )
 from taxi_showcase.timestamp_utils import (
@@ -25,11 +26,37 @@ from taxi_showcase.timestamp_utils import (
 spark = SparkSession.builder.getOrCreate()
 
 
+def ensure_dlq_table(table_name: str) -> None:
+    """Create the Weather DLQ with column mapping for raw source headers."""
+    if spark.catalog.tableExists(table_name):
+        return
+
+    catalog, schema_name = table_name.split(".")[:2]
+    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema_name}")
+
+    dlq_schema = expected_to_struct_type(DLQ_SCHEMA)
+    col_defs = [
+        f"`{field.name.replace('`', '``')}` {field.dataType.simpleString()}"
+        for field in dlq_schema.fields
+    ]
+    spark.sql(f"""
+        CREATE TABLE IF NOT EXISTS {table_name} (
+            {', '.join(col_defs)}
+        ) TBLPROPERTIES (
+            'delta.columnMapping.mode' = 'name',
+            'delta.minReaderVersion'    = '2',
+            'delta.minWriterVersion'   = '5'
+        )
+    """)
+    print(f"Tabelle {table_name} mit Column Mapping erstellt.")
+
+
 def main() -> None:
     # Resolve the weather Bronze and Silver tables for this catalog.
     cfg = create_config(parse_catalog_argument())
     bronze_table = cfg.bronze_table
     silver_table = cfg.silver_table
+    dlq_table = cfg.dlq_table
 
     print(f"Bronze: {bronze_table}")
     print(f"Silver: {silver_table}")
@@ -44,6 +71,12 @@ def main() -> None:
     print_timestamp_report(ts_result, "time")
     if ts_result["unparseable"] > 0:
         raise ValueError("Timestamp-Validierung fehlgeschlagen \u2013 Bronze-Daten pruefen!")
+
+    df_dlq = df_bronze.filter(col("time").isNull()).withColumn(
+        "_dlq_reason", lit("null_timestamp")
+    )
+    df_bronze = df_bronze.filter(col("time").isNotNull())
+    print(f"  NULL time in DLQ: {df_dlq.count():,}")
 
     # Transformation: String -> typed columns
     # Cast raw strings to analytical types and retain processing lineage.
@@ -66,15 +99,29 @@ def main() -> None:
         .withColumn("utc_offset_seconds", col("utc_offset_seconds").cast("int"))
         .withColumn("_silver_processed_at", current_timestamp())
     )
+    print(f"\nZeilen nach Transformation: {df_silver.count():,}")
+
+    # Keep the most recently ingested observation when an hour is duplicated.
+    df_silver, df_dlq_dups = dedup_keep_first(
+        df_silver,
+        ["ts"],
+        order_col="_ingested_at",
+        keep="latest",
+    )
+    # Duplicates were already cast to Silver types; restore the raw Bronze types for the DLQ.
+    df_dlq_dups = df_dlq_dups.select(
+        *[
+            col(c).cast(t).alias(c) if c in ("latitude", "longitude", "utc_offset_seconds") else col(c)
+            for c, t in BRONZE_SCHEMA.items()
+        ]
+    ).withColumn("_dlq_reason", lit("duplicate"))
+    df_dlq = df_dlq.unionByName(df_dlq_dups)
+
     cols_to_drop = [
         "time", "temperature_2m (\u00b0C)", "rain (mm)", "snowfall (cm)",
         "precipitation (mm)", "snow_depth (m)", "elevation",
     ]
     df_silver = df_silver.drop(*cols_to_drop)
-    print(f"\nZeilen nach Transformation: {df_silver.count():,}")
-
-    # Keep the most recently ingested observation when an hour is duplicated.
-    df_silver, _ = dedup_keep_first(df_silver, ["ts"], order_col="_ingested_at", keep="latest")
 
     # Report missing weather measurements without dropping those observations.
     weather_cols = ["temperature_2m_c", "rain_mm", "snowfall_cm", "precipitation_mm", "snow_depth_m"]
@@ -116,7 +163,9 @@ def main() -> None:
         print("  \u26a0\ufe0f  Tage mit fehlenden Stunden:")
         hours_per_day.filter("hours < 24").show(truncate=False)
 
-    # Write Silver table
+    # Write rejected null-timestamp rows and the Silver table.
+    ensure_dlq_table(dlq_table)
+    write_dlq(df_dlq, dlq_table, DLQ_SCHEMA)
     write_silver(df_silver, silver_table, SILVER_SCHEMA)
 
     # Display a small ordered sample as a post-write verification.

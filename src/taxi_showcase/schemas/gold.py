@@ -72,6 +72,7 @@ MOBILITY_DAILY_COMPARISON_SCHEMA = {
     "bike_casual_trips": "bigint",
     "bike_electric_trips": "bigint",
     "bike_classic_trips": "bigint",
+    "weather_hours": "bigint",
     "avg_temp_c": "double",
     "max_temp_c": "double",
     "min_temp_c": "double",

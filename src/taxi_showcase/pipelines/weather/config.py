@@ -18,6 +18,7 @@ class WeatherConfig:
     tracking_table: str
     bronze_table: str
     silver_table: str
+    dlq_table: str
     expected_columns: Mapping[str, str]
 
 
@@ -28,5 +29,6 @@ def create_config(catalog: str, landing_catalog: str = DEFAULT_LANDING_CATALOG) 
         tracking_table=f"{catalog}.raw_files.weather_ingested_files",
         bronze_table=f"{catalog}.bronze.weather_raw",
         silver_table=f"{catalog}.silver.weather_hourly",
+        dlq_table=f"{catalog}.silver.weather_hourly_dlq",
         expected_columns=EXPECTED_COLUMNS,
     )

@@ -45,12 +45,22 @@ def filter_temporal_outliers(
     dlq_reason: str = "outlier_timestamp",
 ) -> tuple[DataFrame, DataFrame]:
     """Keep timestamps within the allowed range and send outliers to the DLQ."""
+    # Null timestamps cannot be compared to the temporal bounds; quarantine them
+    # separately so they do not disappear from both outputs.
+    df_null_timestamps = (
+        df.filter(isnull(col(ts_col)))
+        .withColumn("_dlq_reason", lit("null_timestamp"))
+    )
+
     # Use source distribution to define the lower bound, with a fixed upper bound.
     percentiles = df.agg(
         percentile_approx(ts_col, [0.05, 0.95]).alias("pcts")
     ).collect()[0]["pcts"]
-    p5_ts, p95_ts = percentiles[0], percentiles[1]
+    if percentiles is None or percentiles[0] is None:
+        print(f"  Keine gueltigen Timestamps in {ts_col}; alle Zeilen gehen in die DLQ.")
+        return df.limit(0), df_null_timestamps
 
+    p5_ts, p95_ts = percentiles
     lower_bound = p5_ts - timedelta(days=30)
     upper_bound = spark.sql("SELECT current_date()").collect()[0][0]
 
@@ -85,6 +95,7 @@ def filter_temporal_outliers(
         (col(ts_col) < lower_bound) |
         (col(ts_col) > upper_bound)
     ).withColumn("_dlq_reason", lit(dlq_reason))
+    df_dlq = df_dlq.unionByName(df_null_timestamps, allowMissingColumns=True)
     return df_filtered, df_dlq
 
 

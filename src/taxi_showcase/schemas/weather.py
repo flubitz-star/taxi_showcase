@@ -26,3 +26,10 @@ SILVER_SCHEMA = {
     "snow_depth_m": "double",
     "_silver_processed_at": "timestamp",
 }
+
+# Rejected source rows retain their raw fields and add a reason and removal time.
+DLQ_SCHEMA = {
+    **BRONZE_SCHEMA,
+    "_dlq_reason": "string",
+    "_dlq_removed_at": "timestamp",
+}

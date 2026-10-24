@@ -5,7 +5,7 @@ dedup on ride_id, null checks, DLQ, write silver.
 """
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, lit
+from pyspark.sql.functions import col, lit, when
 
 from taxi_showcase.pipelines.bike.config import create_config
 from taxi_showcase.pipelines.shared.config import parse_catalog_argument
@@ -65,16 +65,23 @@ def main() -> None:
     invalid_duration = df_filtered.filter(
         col("ended_at") <= col("started_at")
     ).count()
+    null_end = df_filtered.filter(col("ended_at").isNull()).count()
     print("\u2500\u2500 Logische Konsistenz \u2500\u2500")
     print(f"  Ungueltige Trip-Dauer (ended_at <= started_at): {invalid_duration:,}")
+    print(f"  NULL ended_at:                                  {null_end:,} (DLQ)")
 
     df_consistent = df_filtered.filter(col("ended_at") > col("started_at"))
     removed = df_filtered.count() - df_consistent.count()
     print(f"  Entfernt durch Konsistenz-Filter: {removed:,}")
 
-    df_dlq_invalid = df_filtered.filter(
+    invalid_consistency = col("ended_at").isNull() | (
         col("ended_at") <= col("started_at")
-    ).withColumn("_dlq_reason", lit("invalid_consistency"))
+    )
+    df_dlq_invalid = df_filtered.filter(invalid_consistency).withColumn(
+        "_dlq_reason",
+        when(col("ended_at").isNull(), lit("null_timestamp"))
+        .otherwise(lit("invalid_consistency")),
+    )
     # Preserve trips with impossible time ordering for later inspection.
     df_dlq = df_dlq.unionByName(df_dlq_invalid, allowMissingColumns=True)
 
@@ -82,6 +89,15 @@ def main() -> None:
     df_silver = add_trip_features(df_consistent, "started_at", "ended_at")
     print("  Abgeleitete Spalten: trip_duration_min, pickup_dayofweek, pickup_weekday, is_weekend")
     print(f"  Zeilen nach Konsistenz-Filter: {df_silver.count():,}")
+
+    null_ride_ids = df_silver.filter(col("ride_id").isNull())
+    df_silver = df_silver.filter(col("ride_id").isNotNull())
+    # Move rows with null ride_id to the DLQ.
+    df_dlq_null_ids = null_ride_ids.withColumn(
+        "_dlq_reason", lit("null_ride_id")
+    )
+    print(f"  NULL ride_id in DLQ: {null_ride_ids.count():,}")
+    df_dlq = df_dlq.unionByName(df_dlq_null_ids, allowMissingColumns=True)
 
     # Check 4: Treat ride_id as the unique business key for CitiBike trips.
     df_silver, df_dlq_dups = dedup_keep_first(df_silver, ["ride_id"])

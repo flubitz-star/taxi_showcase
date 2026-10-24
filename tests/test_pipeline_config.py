@@ -37,6 +37,7 @@ class PipelineConfigTests(unittest.TestCase):
         self.assertEqual(bike_config.silver_table, "analytics.silver.bike_trips")
         self.assertEqual(weather_config.landing_zone, "/Volumes/workspace/raw_files/landing_zone/weather")
         self.assertEqual(weather_config.silver_table, "analytics.silver.weather_hourly")
+        self.assertEqual(weather_config.dlq_table, "analytics.silver.weather_hourly_dlq")
 
     def test_landing_zone_uses_shared_catalog_while_tables_follow_environment(self: "PipelineConfigTests") -> None:
         for env_catalog in ("taxi_dev", "taxi_prod"):

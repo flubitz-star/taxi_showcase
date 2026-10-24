@@ -9,6 +9,7 @@ from pyspark.sql.functions import col, isnull, lit, when
 
 from taxi_showcase.pipelines.shared.config import parse_catalog_argument
 from taxi_showcase.pipelines.taxi.config import create_config
+from taxi_showcase.pipelines.taxi.schema import EXPECTED_COLUMNS
 from taxi_showcase.schema import validate_table_schema
 from taxi_showcase.schemas.taxi import BRONZE_SCHEMA, DLQ_SCHEMA, SILVER_SCHEMA
 from taxi_showcase.silver_helpers import (
@@ -53,11 +54,13 @@ def main() -> None:
     invalid_duration = df_filtered.filter(
         col("tpep_dropoff_datetime") <= col("tpep_pickup_datetime")
     ).count()
+    null_dropoff = df_filtered.filter(isnull(col("tpep_dropoff_datetime"))).count()
     neg_fare = df_filtered.filter(col("fare_amount") < 0).count()
     neg_distance = df_filtered.filter(col("trip_distance") < 0).count()
 
     print("\u2500\u2500 Logische Konsistenz \u2500\u2500")
     print(f"  Ungueltige Trip-Dauer (dropoff <= pickup): {invalid_duration:,}")
+    print(f"  NULL tpep_dropoff_datetime:                {null_dropoff:,} (DLQ)")
     print(f"  Negativer fare_amount:                     {neg_fare:,} (Flag, nicht entfernt)")
     print(f"  Negativer trip_distance:                   {neg_distance:,}")
 
@@ -67,24 +70,30 @@ def main() -> None:
     removed = df_filtered.count() - df_consistent.count()
     print(f"  Entfernt durch Konsistenz-Filter: {removed:,}")
 
-    df_dlq_invalid = df_filtered.filter(
-        col("tpep_dropoff_datetime") <= col("tpep_pickup_datetime")
-    ).withColumn("_dlq_reason", lit("invalid_consistency"))
+    invalid_consistency = (
+        isnull(col("tpep_dropoff_datetime"))
+        | (col("tpep_dropoff_datetime") <= col("tpep_pickup_datetime"))
+    )
+    df_dlq_invalid = df_filtered.filter(invalid_consistency).withColumn(
+        "_dlq_reason",
+        when(isnull(col("tpep_dropoff_datetime")), lit("null_timestamp"))
+        .otherwise(lit("invalid_consistency")),
+    )
     # Keep logically invalid trips available for investigation in the DLQ.
     df_dlq = df_dlq.unionByName(df_dlq_invalid, allowMissingColumns=True)
 
     # Add derived columns
+    # Add derived trip features such as duration, pickup day, and weekend flag.
     df_silver = add_trip_features(df_consistent, "tpep_pickup_datetime", "tpep_dropoff_datetime")
+
     # Flag negative fares (not removed)
     df_silver = df_silver.withColumn("_has_negative_fare", col("fare_amount") < 0)
     print("  Abgeleitete Spalten: trip_duration_min, _has_negative_fare, pickup_dayofweek, pickup_weekday, is_weekend")
     print(f"  Zeilen nach Konsistenz-Filter: {df_silver.count():,}")
 
-    # Check 4: Keep the first trip for each business-key combination.
-    dup_keys = [
-        "tpep_pickup_datetime", "tpep_dropoff_datetime",
-        "PULocationID", "DOLocationID", "trip_distance", "fare_amount",
-    ]
+    # Only exact duplicate source records are duplicates; ingestion metadata is
+    # intentionally excluded so re-ingested copies can still be identified.
+    dup_keys = list(EXPECTED_COLUMNS)
     df_silver, df_dlq_dups = dedup_keep_first(df_silver, dup_keys)
     df_dlq = df_dlq.unionByName(df_dlq_dups, allowMissingColumns=True)
 
@@ -101,8 +110,6 @@ def main() -> None:
     else:
         df_silver = df_silver.withColumn("_passenger_count_imputed", lit(False))
 
-    print("  -> NULLs mit 1 gefuellt, _passenger_count_imputed Flag gesetzt.")
-
     report_null_counts(df_silver, [
         "VendorID", "tpep_pickup_datetime", "tpep_dropoff_datetime",
         "trip_distance", "fare_amount", "total_amount", "passenger_count",
@@ -112,8 +119,8 @@ def main() -> None:
     print("\n\u2500\u2500 Wertebereich-Check \u2500\u2500")
     range_checks = [
         ("trip_distance", 0.0, 500.0, "trip_distance (mi)"),
-        ("fare_amount",  -100.0, 1000.0, "fare_amount ($)"),
-        ("total_amount", -100.0, 1000.0, "total_amount ($)"),
+        ("fare_amount",    0.0, 1000.0, "fare_amount ($)"),
+        ("total_amount",   0.0, 1000.0, "total_amount ($)"),
         ("trip_duration_min", 0.0, 600.0, "trip_duration (min)"),
     ]
     for c, lo, hi, label in range_checks:
