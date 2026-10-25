@@ -30,11 +30,26 @@ def main() -> None:
     tables = gold_tables(catalog)
     daily_table = tables.mobility_daily_comparison
     hourly_table = tables.mobility_hourly_comparison
-    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.gold")
 
     taxi_silver = create_taxi_config(catalog).silver_table
     bike_silver = create_bike_config(catalog).silver_table
     weather_silver = create_weather_config(catalog).silver_table
+
+    source_tables = {
+        "Taxi": taxi_silver,
+        "Bike": bike_silver,
+        "Weather": weather_silver,
+    }
+    missing_tables = [
+        f"{source} ({table})"
+        for source, table in source_tables.items()
+        if not spark.catalog.tableExists(table)
+    ]
+    if missing_tables:
+        raise RuntimeError(
+            "Mobility Gold kann nicht erstellt werden; Silver-Quelltabellen "
+            f"fehlen: {', '.join(missing_tables)}"
+        )
 
     # Check each upstream table against its declared schema before querying it.
     validate_table_schema(taxi_silver, TAXI_SILVER_SCHEMA)
@@ -45,9 +60,26 @@ def main() -> None:
     df_bike = spark.table(bike_silver)
     df_weather = spark.table(weather_silver)
 
-    print(f"Taxi Silver:    {df_taxi.count():,} Zeilen")
-    print(f"Bike Silver:    {df_bike.count():,} Zeilen")
-    print(f"Weather Silver: {df_weather.count():,} Zeilen")
+    source_counts = {
+        "Taxi": df_taxi.count(),
+        "Bike": df_bike.count(),
+        "Weather": df_weather.count(),
+    }
+    for source, count in source_counts.items():
+        print(f"{source} Silver: {count:,} Zeilen")
+
+    empty_sources = [
+        source for source, count in source_counts.items() if count == 0
+    ]
+    if empty_sources:
+        print(
+            "WARNUNG: Mobility Gold wird nicht geschrieben; "
+            "Silver-Quelltabellen sind leer: "
+            f"{', '.join(empty_sources)}. Bestehende Gold-Tabellen bleiben erhalten."
+        )
+        return
+
+    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.gold")
 
     # Aggregate taxi, bike, and hourly weather rows separately by calendar day.
     df_taxi_daily = spark.sql(f"""
