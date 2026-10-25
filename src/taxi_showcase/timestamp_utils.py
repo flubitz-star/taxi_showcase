@@ -123,7 +123,8 @@ def normalize_timestamp(
 
     # Keep local wall-clock values timezone-free rather than converting time zones.
     if expected_format:
-        parsed = to_timestamp_ntz(col(col_name), expected_format)
+        # The format must be a literal; a plain string would be read as a column name.
+        parsed = to_timestamp_ntz(col(col_name), lit(expected_format))
     else:
         parsed = to_timestamp_ntz(col(col_name))
 

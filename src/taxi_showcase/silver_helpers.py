@@ -1,7 +1,7 @@
 """Pipeline helpers for Silver (checks & writes)."""
 
 from collections.abc import Mapping, Sequence
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
@@ -43,8 +43,14 @@ def filter_temporal_outliers(
     ts_col: str,
     example_cols: Sequence[str] | None = None,
     dlq_reason: str = "outlier_timestamp",
+    lower_bound: datetime | None = None,
 ) -> tuple[DataFrame, DataFrame]:
-    """Keep timestamps within the allowed range and send outliers to the DLQ."""
+    """Keep timestamps within the allowed range and send outliers to the DLQ.
+
+    Without lower_bound it is derived from the data (p5 - 30 days); incremental
+    runs pass the bound of the existing data, since a small batch is no basis
+    for percentiles.
+    """
     # Null timestamps cannot be compared to the temporal bounds; quarantine them
     # separately so they do not disappear from both outputs.
     df_null_timestamps = (
@@ -52,22 +58,25 @@ def filter_temporal_outliers(
         .withColumn("_dlq_reason", lit("null_timestamp"))
     )
 
-    # Use source distribution to define the lower bound, with a fixed upper bound.
-    percentiles = df.agg(
-        percentile_approx(ts_col, [0.05, 0.95]).alias("pcts")
-    ).collect()[0]["pcts"]
-    if percentiles is None or percentiles[0] is None:
-        print(f"  Keine gueltigen Timestamps in {ts_col}; alle Zeilen gehen in die DLQ.")
-        return df.limit(0), df_null_timestamps
+    if lower_bound is None:
+        # Use source distribution to define the lower bound, with a fixed upper bound.
+        percentiles = df.agg(
+            percentile_approx(ts_col, [0.05, 0.95]).alias("pcts")
+        ).collect()[0]["pcts"]
+        if percentiles is None or percentiles[0] is None:
+            print(f"  Keine gueltigen Timestamps in {ts_col}; alle Zeilen gehen in die DLQ.")
+            return df.limit(0), df_null_timestamps
 
-    p5_ts, p95_ts = percentiles
-    lower_bound = p5_ts - timedelta(days=30)
+        p5_ts, p95_ts = percentiles
+        lower_bound = p5_ts - timedelta(days=30)
+        print("\u2500\u2500 Ausreisser-Erkennung \u2500\u2500")
+        print(f"  p5 der {ts_col}-Timestamps:  {p5_ts}")
+        print(f"  p95 der {ts_col}-Timestamps: {p95_ts}")
+    else:
+        print("\u2500\u2500 Ausreisser-Erkennung (feste Untergrenze) \u2500\u2500")
     upper_bound = spark.sql("SELECT current_date()").collect()[0][0]
 
-    print("\u2500\u2500 Ausreisser-Erkennung \u2500\u2500")
-    print(f"  p5 der {ts_col}-Timestamps:  {p5_ts}")
-    print(f"  p95 der {ts_col}-Timestamps: {p95_ts}")
-    print(f"  Untere Grenze (p5 - 30T):    {lower_bound}")
+    print(f"  Untere Grenze:               {lower_bound}")
     print(f"  Obere Grenze (heute):        {upper_bound}")
 
     outliers_old = df.filter(col(ts_col) < lower_bound).count()
@@ -167,6 +176,7 @@ def write_dlq(
     df_dlq: DataFrame,
     dlq_table: str,
     expected_schema: Mapping[str, str],
+    mode: str = "overwrite",
 ) -> None:
     """Validate and write a DLQ table."""
     # Mark when rejected rows were written for later operational auditing.
@@ -180,7 +190,7 @@ def write_dlq(
         .show(truncate=False)
 
     print(f"Schreibe in {dlq_table} ...")
-    write_table(df_dlq, dlq_table, expected_schema)
+    write_table(df_dlq, dlq_table, expected_schema, mode=mode)
     print(f"\u2705 {dlq_count:,} Zeilen in {dlq_table} geschrieben.")
 
 
@@ -188,6 +198,7 @@ def write_silver(
     df: DataFrame,
     silver_table: str,
     expected_schema: Mapping[str, str],
+    mode: str = "overwrite",
 ) -> None:
     """Validate and write a Silver table."""
     catalog = silver_table.split(".")[0]
@@ -195,5 +206,5 @@ def write_silver(
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.silver")
 
     print(f"Schreibe in {silver_table} ...")
-    write_table(df, silver_table, expected_schema)
+    write_table(df, silver_table, expected_schema, mode=mode)
     print(f"\u2705 {df.count():,} Zeilen in {silver_table} geschrieben.")

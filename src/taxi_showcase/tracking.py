@@ -35,15 +35,23 @@ def compute_md5(file_path: str) -> str:
     return hash_md5.hexdigest()
 
 
-def list_landing_files(lz_path: str) -> list[LandingFile]:
-    """List landing-zone files and return their paths, sizes, and checksums."""
+def list_landing_files(
+    lz_path: str,
+    known_files: Mapping[tuple[str, int], str] | None = None,
+) -> list[LandingFile]:
+    """List landing-zone files and return their paths, sizes, and checksums.
+
+    known_files maps (file_name, file_size) of already tracked files to their
+    checksum, so unchanged files are not read and hashed again.
+    """
+    known_files = known_files or {}
     files = []
     for entry in dbutils.fs.ls(lz_path):
         # Ignore subdirectories; each listed file is tracked independently.
         if not entry.isDir():
             full_path = entry.path.replace("dbfs:", "")
             file_name = os.path.basename(full_path.rstrip("/"))
-            checksum = compute_md5(full_path)
+            checksum = known_files.get((file_name, entry.size)) or compute_md5(full_path)
             files.append({
                 "file_name": file_name,
                 "file_path": full_path,
@@ -91,6 +99,13 @@ def get_known_checksums(tracking_table: str) -> dict[str, str]:
     known = {row.checksum: row.file_name for row in df.collect()}
     print(f"Bereits registrierte Dateien in Tracking-Tabelle: {len(known)}")
     return known
+
+
+def get_known_file_checksums(tracking_table: str) -> dict[tuple[str, int], str]:
+    """Return tracked checksums keyed by (file_name, file_size)."""
+    ensure_tracking_table(tracking_table)
+    df = spark.sql(f"SELECT file_name, file_size, checksum FROM {tracking_table}")
+    return {(row.file_name, row.file_size): row.checksum for row in df.collect()}
 
 
 def split_new_vs_known(

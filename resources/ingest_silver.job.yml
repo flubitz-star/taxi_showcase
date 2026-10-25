@@ -18,9 +18,19 @@ resources:
             python_file: ../src/taxi_showcase/pipelines/weather/landing_zone.py
             parameters: ["--catalog", "${var.catalog}", "--landing-catalog", "${var.landing_catalog}"]
 
-        - task_key: weather_bronze
+        # Skip Bronze and Silver when the landing zone has nothing new to load.
+        - task_key: weather_has_new_files
           depends_on:
             - task_key: weather_landing_zone
+          condition_task:
+            op: GREATER_THAN
+            left: "{{tasks.weather_landing_zone.values.pending_files}}"
+            right: "0"
+
+        - task_key: weather_bronze
+          depends_on:
+            - task_key: weather_has_new_files
+              outcome: "true"
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/weather/bronze.py
@@ -41,9 +51,19 @@ resources:
             python_file: ../src/taxi_showcase/pipelines/taxi/landing_zone.py
             parameters: ["--catalog", "${var.catalog}", "--landing-catalog", "${var.landing_catalog}"]
 
-        - task_key: taxi_bronze
+        # Skip Bronze and Silver when the landing zone has nothing new to load.
+        - task_key: taxi_has_new_files
           depends_on:
             - task_key: taxi_landing_zone
+          condition_task:
+            op: GREATER_THAN
+            left: "{{tasks.taxi_landing_zone.values.pending_files}}"
+            right: "0"
+
+        - task_key: taxi_bronze
+          depends_on:
+            - task_key: taxi_has_new_files
+              outcome: "true"
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/taxi/bronze.py
@@ -64,9 +84,19 @@ resources:
             python_file: ../src/taxi_showcase/pipelines/bike/landing_zone.py
             parameters: ["--catalog", "${var.catalog}", "--landing-catalog", "${var.landing_catalog}"]
 
-        - task_key: bike_bronze
+        # Skip Bronze and Silver when the landing zone has nothing new to load.
+        - task_key: bike_has_new_files
           depends_on:
             - task_key: bike_landing_zone
+          condition_task:
+            op: GREATER_THAN
+            left: "{{tasks.bike_landing_zone.values.pending_files}}"
+            right: "0"
+
+        - task_key: bike_bronze
+          depends_on:
+            - task_key: bike_has_new_files
+              outcome: "true"
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/bike/bronze.py

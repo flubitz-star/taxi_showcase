@@ -238,8 +238,20 @@ Checks to keep in mind:
 - Weather must cover the same period, otherwise the new trips have no weather
   match (see the coverage output of `gold_taxi_weather`).
 
-The cost of a full refresh grows with total history, not with new data. To
-scale to continuous operation:
+The cost of a full refresh grows with total history, not with new data.
+**Taxi Silver can already run incrementally** (opt-in, default stays full
+refresh): pass `--incremental` to the `taxi_silver` task. It then processes only
+Bronze files that Silver and the DLQ do not contain yet, applies the outlier
+filter with a fixed lower bound taken from the existing Silver data (min pickup
+− 30 days; a small batch is no basis for percentiles), skips trips already in
+Silver (all source columns equal, null-safe) as DLQ reason `duplicate`, and
+appends to Silver and the DLQ. Without an existing Silver table the flag falls
+back to a full refresh; run without the flag to rebuild everything. Taxi data
+has no trip ID, so identical source records are treated as the same trip.
+
+The landing-zone check no longer re-hashes the whole landing zone: tracked files
+with unchanged name and size reuse their stored checksum. To scale further to
+continuous operation:
 
 - **Incremental Silver:** process only new Bronze rows (watermark on
   `_ingested_at` or the new `_source_file` values, not on the event time, so

@@ -3,7 +3,7 @@
 Lists ZIP archives in the bike landing zone, registers new files via checksum tracking.
 """
 
-from taxi_showcase.ingest_helpers import run_landing_zone_check
+from taxi_showcase.ingest_helpers import publish_pending_files, run_landing_zone_check
 from taxi_showcase.pipelines.bike.config import create_config
 from taxi_showcase.pipelines.shared.config import (
     parse_catalog_argument,
@@ -17,6 +17,7 @@ def main() -> None:
     new_files, dup_files = run_landing_zone_check(cfg)
     # The shared helper has registered new files; report this run's discovery.
     print(f"\nNew files: {len(new_files)}, Duplicates: {len(dup_files)}")
+    publish_pending_files(cfg.tracking_table, cfg.bronze_table)
 
 
 if __name__ == "__main__":
