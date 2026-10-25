@@ -33,6 +33,14 @@ class PipelineConfigTests(unittest.TestCase):
         bike_config = create_bike_config("analytics")
         weather_config = create_weather_config("analytics")
         self.assertEqual(taxi_config.landing_zone, "/Volumes/workspace/raw_files/landing_zone/taxi")
+        self.assertEqual(
+            taxi_config.streaming_landing_zone,
+            "/Volumes/workspace/raw_files/landing_zone/taxi_streaming",
+        )
+        self.assertEqual(
+            taxi_config.streaming_checkpoint,
+            "/Volumes/workspace/raw_files/landing_zone/taxi_streaming_checkpoint/analytics",
+        )
         self.assertEqual(taxi_config.silver_table, "analytics.silver.taxi_trips")
         self.assertEqual(bike_config.landing_zone, "/Volumes/workspace/raw_files/landing_zone/bike")
         self.assertEqual(bike_config.silver_table, "analytics.silver.bike_trips")

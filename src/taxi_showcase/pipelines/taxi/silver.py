@@ -35,7 +35,7 @@ from taxi_showcase.silver_helpers import (
 
 spark = SparkSession.builder.getOrCreate()
 
-OUTLIER_WINDOW = timedelta(days=30)
+OUTLIER_WINDOW = timedelta(days=100)
 
 
 def _incremental_requested() -> bool:
@@ -48,11 +48,23 @@ def _incremental_requested() -> bool:
     return args.incremental
 
 
-def _select_unprocessed(df_bronze: DataFrame, silver_table: str, dlq_table: str) -> DataFrame:
+def _snapshot(table: str) -> DataFrame:
+    """Read a Delta table at its current version.
+
+    The result DataFrames are evaluated lazily and after Silver has been written;
+    a pinned version keeps them independent of the rows this run appends.
+    """
+    version = spark.sql(f"DESCRIBE HISTORY {table} LIMIT 1").collect()[0]["version"]
+    return spark.read.option("versionAsOf", version).table(table)
+
+
+def _select_unprocessed(
+    df_bronze: DataFrame, silver_snapshot: DataFrame, dlq_snapshot: DataFrame | None
+) -> DataFrame:
     """Keep Bronze rows of files that neither Silver nor the DLQ contain yet."""
-    processed = spark.table(silver_table).select("_source_file")
-    if spark.catalog.tableExists(dlq_table):
-        processed = processed.union(spark.table(dlq_table).select("_source_file"))
+    processed = silver_snapshot.select("_source_file")
+    if dlq_snapshot is not None:
+        processed = processed.union(dlq_snapshot.select("_source_file"))
     return df_bronze.join(processed.distinct(), "_source_file", "left_anti")
 
 
@@ -63,13 +75,15 @@ def _existing_lower_bound(silver_table: str) -> datetime:
     return first_pickup - OUTLIER_WINDOW
 
 
-def _drop_already_seen(df: DataFrame, silver_table: str) -> tuple[DataFrame, DataFrame]:
+def _drop_already_seen(
+    df: DataFrame, silver_snapshot: DataFrame
+) -> tuple[DataFrame, DataFrame]:
     """Split off trips that already exist in Silver (all source columns equal)."""
     row = df.agg(
         min_("tpep_pickup_datetime").alias("lo"), max_("tpep_pickup_datetime").alias("hi")
     ).collect()[0]
     # Silver stores imputed passenger counts; restore NULL to compare with the source.
-    existing = spark.table(silver_table).filter(
+    existing = silver_snapshot.filter(
         col("tpep_pickup_datetime").between(row["lo"], row["hi"])
     ).select(*[
         when(col("_passenger_count_imputed"), lit(None)).otherwise(col(c)).alias(c)
@@ -103,9 +117,12 @@ def main() -> None:
     validate_table_schema(bronze_table, BRONZE_SCHEMA)
     df_bronze = spark.table(bronze_table)
     lower_bound = None
+    silver_snapshot = None
     if incremental:
         validate_table_schema(silver_table, SILVER_SCHEMA)
-        df_bronze = _select_unprocessed(df_bronze, silver_table, dlq_table)
+        silver_snapshot = _snapshot(silver_table)
+        dlq_snapshot = _snapshot(dlq_table) if spark.catalog.tableExists(dlq_table) else None
+        df_bronze = _select_unprocessed(df_bronze, silver_snapshot, dlq_snapshot)
         lower_bound = _existing_lower_bound(silver_table)
     bronze_count = df_bronze.count()
     print(f"Zeilen in Bronze: {bronze_count:,}")
@@ -172,7 +189,7 @@ def main() -> None:
     df_dlq = df_dlq.unionByName(df_dlq_dups, allowMissingColumns=True)
     if incremental:
         # Trips already in Silver (e.g. re-delivered snippets) are not appended again.
-        df_silver, df_dlq_seen = _drop_already_seen(df_silver, silver_table)
+        df_silver, df_dlq_seen = _drop_already_seen(df_silver, silver_snapshot)
         df_dlq = df_dlq.unionByName(df_dlq_seen, allowMissingColumns=True)
 
     # Check 5: Null handling (passenger_count imputation)

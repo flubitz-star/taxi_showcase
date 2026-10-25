@@ -72,10 +72,19 @@ resources:
         - task_key: taxi_silver
           depends_on:
             - task_key: taxi_bronze
+            - task_key: taxi_streaming_bronze
+          run_if: AT_LEAST_ONE_SUCCESS
           environment_key: default
           spark_python_task:
             python_file: ../src/taxi_showcase/pipelines/taxi/silver.py
             parameters: ["--catalog", "${var.catalog}"]
+
+        # ── Taxi streaming MVP (Auto Loader -> separate streaming Bronze) ──
+        - task_key: taxi_streaming_bronze
+          environment_key: default
+          spark_python_task:
+            python_file: ../src/taxi_showcase/pipelines/taxi/streaming_bronze.py
+            parameters: ["--catalog", "${var.catalog}", "--landing-catalog", "${var.landing_catalog}"]
 
         # ── Bike chain ──
         - task_key: bike_landing_zone

@@ -1,0 +1,15 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: Ruff lint
+        entry: ruff check src tests
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: unit-tests
+        name: Unit tests
+        entry: python tests/run_tests.py
+        language: system
+        pass_filenames: false
+        always_run: true

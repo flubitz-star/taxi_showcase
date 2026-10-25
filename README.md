@@ -14,12 +14,14 @@ flowchart LR
 
     subgraph Landing["Gemeinsame Landing Zone<br/>Unity Catalog Volume"]
         taxiFiles["/taxi"]
+        taxiStreamFiles["/taxi_streaming · JSON"]
         weatherFiles["/weather"]
         bikeFiles["/bike"]
     end
 
     subgraph Ingest["Databricks Job: ingest_silver"]
         taxiLz["Taxi<br/>Landing-Zone-Scan"]
+        taxiStreamBronze["Taxi Streaming Bronze<br/>Auto Loader"]
         weatherLz["Weather<br/>Landing-Zone-Scan"]
         bikeLz["Bike<br/>Landing-Zone-Scan"]
         taxiBronze["Taxi Bronze"]
@@ -51,10 +53,12 @@ flowchart LR
     end
 
     taxiSrc --> taxiFiles --> taxiLz
+    taxiStreamFiles --> taxiStreamBronze
     weatherSrc --> weatherFiles --> weatherLz
     bikeSrc --> bikeFiles --> bikeLz
 
     taxiLz --> taxiBronze --> taxiSilver
+    taxiStreamBronze --> taxiSilver
     weatherLz --> weatherBronze --> weatherSilver
     bikeLz --> bikeBronze --> bikeSilver
 
@@ -66,6 +70,7 @@ flowchart LR
     tracking -. "Checksum/Deduplizierung" .-> bikeBronze
 
     taxiBronze --> bronzeTables
+    taxiStreamBronze --> bronzeTables
     weatherBronze --> bronzeTables
     bikeBronze --> bronzeTables
     taxiSilver --> silverTables
@@ -91,14 +96,18 @@ flowchart LR
     zoneGold --> zoneRevenue
 ```
 
-`ingest_silver` führt die drei Quellketten unabhängig voneinander aus. Die
-Landing-Zone-Schritte registrieren neue Dateien anhand ihrer Prüfsumme; Bronze
-lädt anschließend nur noch nicht verarbeitete Dateien. Silver validiert und
-bereinigt die Rohdaten und schreibt nicht verwendbare Datensätze in die
-jeweilige DLQ-Tabelle. `gold` baut zuerst `hourly_ridership` aus Taxi und
-Weather, danach die täglichen/stündlichen Mobilitätsvergleiche aus Taxi, Bike
-und Weather sowie `zone_revenue_hourly` aus Taxi Silver und einer statischen
-LocationID-Map.
+`ingest_silver` führt die Weather- und Bike-Quellketten sowie zwei Taxi-
+Eingangswege aus. Der Taxi-Batchweg registriert Dateien anhand ihrer Prüfsumme;
+Bronze lädt nur noch nicht verarbeitete Dateien. Der separate Taxi-Streaming-
+Task liest JSON-Dateien aus `/taxi_streaming` per Auto Loader mit Checkpoint und
+`availableNow`. Beide Taxi-Wege schreiben in dieselbe Bronze-Tabelle.
+`taxi_silver` läuft, wenn mindestens einer der beiden Taxi-Bronze-Tasks
+erfolgreich war, und verarbeitet inkrementell noch nicht in Silver oder der DLQ
+repräsentierte Dateien. Silver validiert und bereinigt die Rohdaten und schreibt
+nicht verwendbare Datensätze in die jeweilige DLQ-Tabelle. `gold` baut zuerst
+`hourly_ridership` aus Taxi und Weather, danach die täglichen/stündlichen
+Mobilitätsvergleiche aus Taxi, Bike und Weather sowie `zone_revenue_hourly` aus
+Taxi Silver und einer statischen LocationID-Map.
 
 Der Landing-Zone-Volume-Katalog ist zwischen Umgebungen geteilt
 (`landing_catalog`, Standard `workspace`). Tracking-, Bronze-, Silver-, DLQ-
@@ -114,6 +123,7 @@ taxi_showcase/
 ├── run_weather_ingress.ps1  # Deploy and run Weather Silver
 ├── run_bike_ingress.ps1     # Bike pipeline helper
 ├── run_taxi_pipeline.ps1    # Taxi pipeline helper through Silver
+├── taxi_streaming.ps1       # Run Taxi Auto Loader Bronze and Silver
 ├── run_gold.ps1             # Gold pipeline helper
 ├── resources/               # Job definitions
 │   ├── ingest_silver.job.yml
@@ -129,7 +139,7 @@ taxi_showcase/
         ├── shared/          # Shared config and tracking schema
         ├── gold/            # Gold-layer analytics pipelines
         ├── weather/         # Pipeline scripts, config.py, and schema.py
-        ├── taxi/            # Pipeline scripts, config.py, and schema.py
+        ├── taxi/            # Batch and streaming pipeline scripts, config.py, schema.py
         │   └── zone_lookup.py  # Static TLC LocationID-to-zone map
         └── bike/            # Pipeline scripts, config.py, and schema.py
 ```
@@ -189,17 +199,29 @@ databricks bundle run gold --target dev
 .\run_weather_ingress.ps1
 .\run_bike_ingress.ps1
 .\run_taxi_pipeline.ps1
+.\taxi_streaming.ps1
 .\run_gold.ps1
 ```
 
-The Taxi helper runs `taxi_landing_zone`, `taxi_bronze`, and `taxi_silver`
-in sequence. Taxi Silver runs incrementally by default when its Silver table
-already exists; use `.\run_taxi_pipeline.ps1 -FullRefresh` to rebuild it from
-all Bronze rows. The Bike helper runs `bike_landing_zone`, `bike_bronze`, and
-`bike_silver` in sequence. The Gold helper deploys the bundle and runs the
-`gold` job. `gold_mobility` runs after `gold_taxi_weather`; `gold_zone_revenue`
-is independent and may run in parallel. The Gold helper does not run upstream
-ingestion or Silver jobs, so run those first when their tables need refreshing.
+The Taxi batch helper runs `taxi_landing_zone`, `taxi_bronze`, and `taxi_silver`
+in sequence. If no files are pending for batch Bronze, it skips Bronze and
+Silver unless `-Force` or `-FullRefresh` is given. Taxi Silver runs
+incrementally by default when its Silver table already exists; use
+`.\run_taxi_pipeline.ps1 -FullRefresh` to rebuild Silver and its DLQ from all
+Bronze rows.
+
+The separate `.\taxi_streaming.ps1` helper deploys the bundle and runs
+`taxi_streaming_bronze` followed by `taxi_silver`. Auto Loader reads JSON files
+from `/taxi_streaming`; its checkpoint tracks processed files, and
+`availableNow` processes currently available input before the task stops. This
+path does not use the batch checksum tracking or pending-file skip. Streaming
+and batch both append to `<catalog>.bronze.taxi_trips_raw`; Silver then picks
+up unprocessed source files incrementally. The Bike helper runs
+`bike_landing_zone`, `bike_bronze`, and `bike_silver` in sequence. The Gold
+helper deploys the bundle and runs the `gold` job. `gold_mobility` runs after
+`gold_taxi_weather`; `gold_zone_revenue` is independent and may run in
+parallel. The Gold helper does not run upstream ingestion or Silver jobs, so
+run those first when their tables need refreshing.
 
 The Weather helper deploys the bundle and runs only `weather_silver`; it
 expects the Weather Bronze table to exist already. To run the complete Weather
@@ -221,13 +243,16 @@ pickup location or with non-positive `total_amount`, then writes
 
 ## Processing model and scaling
 
-Landing Zone → Bronze is incremental: only files with an unseen checksum are
-registered and appended. Taxi Silver is incremental by default when a Silver
-table already exists: it processes Bronze files not yet represented in Silver
-or the DLQ, deduplicates against existing trips, and appends new results.
-On the first run, when Silver does not yet exist, it performs a full refresh.
-Use `.\run_taxi_pipeline.ps1 -FullRefresh` or pass `--full-refresh` to the
-`taxi_silver` task to rebuild Taxi Silver and its DLQ from all Bronze rows.
+Batch Landing Zone → Bronze is incremental: files with an unseen checksum are
+registered, and Bronze loads tracked files not yet present in the Bronze table.
+The Taxi streaming path independently uses Auto Loader's checkpoint to find
+new JSON files and appends them to the same Taxi Bronze table. Taxi Silver is
+incremental by default when a Silver table already exists: it processes Bronze
+files not yet represented in Silver or the DLQ, deduplicates against existing
+trips, and appends new results. On the first run, when Silver does not yet
+exist, it performs a full refresh. Use `.\run_taxi_pipeline.ps1 -FullRefresh`
+or pass `--full-refresh` to the `taxi_silver` task to rebuild Taxi Silver and
+its DLQ from all Bronze rows.
 
 Bike and Weather Silver, along with Gold outputs, remain full refreshes: they
 read their complete upstream tables and overwrite their targets. This keeps
@@ -235,16 +260,17 @@ those pipelines simple and is sufficient for a few months of data. Mobility
 Gold skips its writes if any Taxi, Bike, or Weather Silver source is missing or
 empty, preserving existing Gold results in that case.
 
-Adding newer data works by dropping source files into the landing zone and
-running the ingestion and Gold jobs. Bronze registers and appends new files;
-Taxi Silver appends their unprocessed trips, while Bike/Weather Silver and
-Gold are recomputed from their complete upstream tables. For older backfills
-or source corrections, run Taxi Silver with `--full-refresh` after loading the
-files. Checks to keep in mind:
+Adding newer data works by placing batch files in the corresponding landing
+zone (Taxi `/taxi`) or streaming JSON files in `/taxi_streaming`, then running
+the matching ingestion helper and the Gold job. Bronze registers or discovers
+and appends new files; Taxi Silver appends their unprocessed trips, while
+Bike/Weather Silver and Gold are recomputed from their complete upstream
+tables. For older backfills or source corrections, run Taxi Silver with
+`--full-refresh` after loading the files. Checks to keep in mind:
 
 - The temporal outlier filter derives its lower bound from the data
   (5th percentile − 30 days) during full Taxi refreshes and Bike processing.
-  Incremental Taxi runs use the existing Silver minimum pickup time − 30 days.
+  Incremental Taxi runs use the existing Silver minimum pickup time − 100 days.
   Backfills earlier than the applicable lower bound are moved to the DLQ, so
   older historical data may need a deliberate outlier-policy adjustment.
 - Weather must cover the same period, otherwise the new trips have no weather
@@ -252,7 +278,7 @@ files. Checks to keep in mind:
 
 The cost of full refreshes grows with total history, not with new data. In
 incremental Taxi Silver, the outlier filter uses a fixed lower bound from the
-existing Silver data (minimum pickup − 30 days; a small batch is not a sound
+existing Silver data (minimum pickup − 100 days; a small batch is not a sound
 basis for percentiles). Trips already in Silver (all source columns equal,
 null-safe) are recorded in the DLQ as `duplicate`. Taxi data has no trip ID, so
 identical source records are treated as the same trip.
@@ -261,32 +287,35 @@ The landing-zone check no longer re-hashes the whole landing zone: tracked files
 with unchanged name and size reuse their stored checksum. To scale further to
 continuous operation:
 
-- **Incremental Silver:** process only new Bronze rows (watermark on
-  `_ingested_at` or the new `_source_file` values, not on the event time, so
-  late or historical backfills are picked up) and `MERGE` them by business
-  key (Bike `ride_id`, Weather `ts`, Taxi: all source columns).
+- **Further incremental Silver:** Bike and Weather Silver still read their
+  complete Bronze tables. They could process only new Bronze rows (using
+  `_ingested_at` or new `_source_file` values, not event time, so late or
+  historical backfills are picked up) and `MERGE` by a suitable business key.
 - **Incremental Gold:** recompute only the affected days/hours and replace
   them with `MERGE` or `replaceWhere`.
 - **Layout:** Liquid Clustering (or partitioning) on the pickup date/hour so
   that reads and updates touch only the relevant files.
-- **Ingestion:** Auto Loader / `COPY INTO` replaces the checksum scan, and a
-  streaming source (e.g. CitiBike real-time feed) can feed Bronze directly.
+- **Ingestion:** Taxi already has an Auto Loader path for JSON files in
+  `/taxi_streaming`; it can be extended to other sources. Auto Loader or
+  `COPY INTO` could replace checksum scans for the remaining batch pipelines.
 
 ## Code quality
 
 GitHub Actions runs Ruff and the unit tests on every push and pull request.
-To run the same lint check locally:
-
-```bash
-python -m pip install ruff
-ruff check src tests
-```
-
-Run the schema validation unit tests with:
+To run the same checks automatically before each commit, install the
+development tools and enable the Git hook:
 
 ```powershell
-$env:PYTHONPATH = "src"
-python -m unittest discover -s tests -v
+python -m pip install -e ".[dev]"
+pre-commit install
+```
+
+The pre-commit hook runs `ruff check src tests` and the complete unit-test
+suite. Run these checks manually with:
+
+```powershell
+ruff check src tests
+python tests/run_tests.py
 ```
 
 ## Unity Catalog
