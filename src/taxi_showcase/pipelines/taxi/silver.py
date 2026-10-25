@@ -3,9 +3,10 @@
 Timestamp validation, outlier detection, logical consistency, dedup,
 passenger_count imputation, range checks, DLQ, write silver.
 
-Default is a full refresh. With --incremental (and an existing Silver table)
-only Bronze files not yet represented in Silver or the DLQ are processed and
-appended; trips already present in Silver are skipped as duplicates.
+With an existing Silver table, the default is incremental: only Bronze files
+not yet represented in Silver or the DLQ are processed and appended. Trips
+already present in Silver are skipped as duplicates. Use --full-refresh to
+rebuild Silver and the DLQ from all Bronze data.
 """
 
 import argparse
@@ -39,7 +40,10 @@ OUTLIER_WINDOW = timedelta(days=30)
 
 def _incremental_requested() -> bool:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--incremental", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--incremental", dest="incremental", action="store_true")
+    mode.add_argument("--full-refresh", dest="incremental", action="store_false")
+    parser.set_defaults(incremental=True)
     args, _ = parser.parse_known_args()
     return args.incremental
 

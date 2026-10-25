@@ -193,15 +193,17 @@ databricks bundle run gold --target dev
 ```
 
 The Taxi helper runs `taxi_landing_zone`, `taxi_bronze`, and `taxi_silver`
-in sequence. The Bike helper runs `bike_landing_zone`, `bike_bronze`, and
-`bike_silver` in sequence. The Gold helper deploys the
-bundle and runs the `gold` job, which builds `gold_taxi_weather` followed by
-`gold_mobility` and `gold_zone_revenue`. It does not run the upstream ingestion
-or Silver jobs, so run those first when their tables need to be refreshed.
+in sequence. Taxi Silver runs incrementally by default when its Silver table
+already exists; use `.\run_taxi_pipeline.ps1 -FullRefresh` to rebuild it from
+all Bronze rows. The Bike helper runs `bike_landing_zone`, `bike_bronze`, and
+`bike_silver` in sequence. The Gold helper deploys the bundle and runs the
+`gold` job. `gold_mobility` runs after `gold_taxi_weather`; `gold_zone_revenue`
+is independent and may run in parallel. The Gold helper does not run upstream
+ingestion or Silver jobs, so run those first when their tables need refreshing.
 
-The Weather helper deploys the bundle and runs `weather_landing_zone`,
-`weather_bronze`, and `weather_silver` in sequence. To run an individual
-Weather step manually, use the `ingest_silver` job with the `--only` selector:
+The Weather helper deploys the bundle and runs only `weather_silver`; it
+expects the Weather Bronze table to exist already. To run the complete Weather
+chain, use `ingest_silver` or run each step with the `--only` selector:
 
 ```powershell
 databricks bundle run ingest_silver --only weather_landing_zone --target dev
@@ -220,34 +222,40 @@ pickup location or with non-positive `total_amount`, then writes
 ## Processing model and scaling
 
 Landing Zone → Bronze is incremental: only files with an unseen checksum are
-registered and appended. Silver and Gold are deliberately **full refresh**:
-each run reads the complete upstream table and overwrites its targets
-(`write_table(..., mode="overwrite")`, including the DLQ tables). This keeps
-the jobs simple and idempotent and is sufficient for a few months of data.
+registered and appended. Taxi Silver is incremental by default when a Silver
+table already exists: it processes Bronze files not yet represented in Silver
+or the DLQ, deduplicates against existing trips, and appends new results.
+On the first run, when Silver does not yet exist, it performs a full refresh.
+Use `.\run_taxi_pipeline.ps1 -FullRefresh` or pass `--full-refresh` to the
+`taxi_silver` task to rebuild Taxi Silver and its DLQ from all Bronze rows.
 
-Adding older data later (e.g. February after August is loaded) works without
-code changes: drop the Taxi and Weather files for the new period into the
-landing zone, then run `ingest_silver` and `gold`. Bronze appends the new
-files, and the full refresh recomputes Silver and Gold over all months.
-Checks to keep in mind:
+Bike and Weather Silver, along with Gold outputs, remain full refreshes: they
+read their complete upstream tables and overwrite their targets. This keeps
+those pipelines simple and is sufficient for a few months of data. Mobility
+Gold skips its writes if any Taxi, Bike, or Weather Silver source is missing or
+empty, preserving existing Gold results in that case.
+
+Adding newer data works by dropping source files into the landing zone and
+running the ingestion and Gold jobs. Bronze registers and appends new files;
+Taxi Silver appends their unprocessed trips, while Bike/Weather Silver and
+Gold are recomputed from their complete upstream tables. For older backfills
+or source corrections, run Taxi Silver with `--full-refresh` after loading the
+files. Checks to keep in mind:
 
 - The temporal outlier filter derives its lower bound from the data
-  (5th percentile − 30 days). A backfill that makes up less than ~5% of all
-  rows would be classified as outliers and moved to the DLQ; a month-sized
-  backfill is fine.
+  (5th percentile − 30 days) during full Taxi refreshes and Bike processing.
+  Incremental Taxi runs use the existing Silver minimum pickup time − 30 days.
+  Backfills earlier than the applicable lower bound are moved to the DLQ, so
+  older historical data may need a deliberate outlier-policy adjustment.
 - Weather must cover the same period, otherwise the new trips have no weather
   match (see the coverage output of `gold_taxi_weather`).
 
-The cost of a full refresh grows with total history, not with new data.
-**Taxi Silver can already run incrementally** (opt-in, default stays full
-refresh): pass `--incremental` to the `taxi_silver` task. It then processes only
-Bronze files that Silver and the DLQ do not contain yet, applies the outlier
-filter with a fixed lower bound taken from the existing Silver data (min pickup
-− 30 days; a small batch is no basis for percentiles), skips trips already in
-Silver (all source columns equal, null-safe) as DLQ reason `duplicate`, and
-appends to Silver and the DLQ. Without an existing Silver table the flag falls
-back to a full refresh; run without the flag to rebuild everything. Taxi data
-has no trip ID, so identical source records are treated as the same trip.
+The cost of full refreshes grows with total history, not with new data. In
+incremental Taxi Silver, the outlier filter uses a fixed lower bound from the
+existing Silver data (minimum pickup − 30 days; a small batch is not a sound
+basis for percentiles). Trips already in Silver (all source columns equal,
+null-safe) are recorded in the DLQ as `duplicate`. Taxi data has no trip ID, so
+identical source records are treated as the same trip.
 
 The landing-zone check no longer re-hashes the whole landing zone: tracked files
 with unchanged name and size reuse their stored checksum. To scale further to

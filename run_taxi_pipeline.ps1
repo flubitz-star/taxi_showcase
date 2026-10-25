@@ -1,6 +1,6 @@
 param(
-    # Run taxi_silver incrementally (append only new Bronze files) instead of a full refresh.
-    [switch]$Incremental,
+    # Rebuild taxi Silver and its DLQ from all Bronze rows.
+    [switch]$FullRefresh,
     # Run Bronze and Silver even when the landing zone has no pending files.
     [switch]$Force
 )
@@ -23,7 +23,7 @@ $match = [regex]::Match(($lzOutput -join "`n"), "Pending files for Bronze: (\d+)
 if (-not $match.Success) {
     throw "Pending-Count nicht in der Ausgabe von taxi_landing_zone gefunden."
 }
-if (-not $Force -and [int]$match.Groups[1].Value -eq 0) {
+if (-not $Force -and -not $FullRefresh -and [int]$match.Groups[1].Value -eq 0) {
     Write-Host "Keine neuen Dateien - taxi_bronze und taxi_silver werden uebersprungen (-Force erzwingt den Lauf)."
     exit 0
 }
@@ -33,10 +33,10 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-# --python-params replaces the task parameters, so the catalog is passed again.
+# --python-params replaces task parameters, so pass the catalog again.
 $silverArgs = @()
-if ($Incremental) {
-    $silverArgs = @("--python-params", "--catalog,taxi_dev,--incremental")
+if ($FullRefresh) {
+    $silverArgs = @("--python-params", "--catalog,taxi_dev,--full-refresh")
 }
 databricks bundle run ingest_silver --only taxi_silver --target dev @silverArgs
 if ($LASTEXITCODE -ne 0) {
